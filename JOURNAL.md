@@ -9,6 +9,86 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 003 — the map lights up (node-merging)
+
+**What I did.** Took the critical path session 002 marked and built it:
+`cartographer/cluster.py` — the node-merging layer. Two questions are now the
+same *node* when their **content words** overlap enough (Jaccard ≥ 0.5).
+Content words = the utterance with its structural scaffolding stripped
+(articles, pronouns, wh-words, aux verbs, intent-framing like "want to",
+discourse fillers) and what's left lightly stemmed. `build_graph(convos,
+cluster=True)` folds the corpus's questions into nodes, relabels every path to
+its cluster representative, and hangs the `Clustering` on `graph.clustering`.
+`run.py --cluster` shows merged nodes with their folded-in phrasings. 39 tests
+green (18 new), still pure stdlib, zero setup.
+
+**The map lit up — 16 → 13 nodes, 3 merges — and it was honest about it.**
+Exactly what session 002 was waiting for. On the sample corpus:
+- ✅ "i want to understand recursion" + "what is recursion" → one node (count 2).
+- ✅ "explain what a monad is" + "what is a monad, really" → one node.
+- ❌ **spurious:** "how is it different from a loop" (recursion) + "why does it
+  loop like that" (a stuck writer circling) → merged on the word "loop". Lexical
+  clustering can't tell word senses apart. This is the ceiling, made visible.
+- ❌ **missed:** "tell my *business* partner the truth" + "tell my partner
+  something *hard*" — a human reads these as one node; they share only
+  {tell, partner} (Jaccard 0.25) and stay apart. Paraphrase needs *meaning*.
+
+**The unplanned gift: the first loop appeared.** c4 goes "explain what a monad
+is" → "what is a monad, really?" → burrito. After merging, the first two
+collapse to the same node, so the path now has a **self-edge** (MONAD → MONAD) —
+a person re-asking the same question because the first answer didn't land. That
+is *exactly* a loop. Node-merging didn't just stack nodes; it made session
+001/002's item #3 (loop vs. resolve) start to fall out on its own. I did not
+engineer this — it emerged from real corpus structure the moment nodes merged.
+
+**Design calls I made.**
+- **Connected-components (single-linkage) via union-find**, not greedy
+  seeding — so clustering is *order-independent and deterministic* (tested).
+  The catch, written down here: single-linkage chains (a~b, b~c ⇒ a,c merge even
+  if a≁c). Harmless at toy scale, a real over-merge hazard on big noisy corpora.
+  First fix when it bites: block candidates by shared content word.
+- **Representative = most frequent phrasing**, ties → shortest → lexical. Stable,
+  and it surfaces the cleanest phrasing as the node's name.
+- **Kept it lexical on purpose.** The two failure modes above are the argument
+  for embeddings — but I'm not reaching for a dependency until the lexical
+  version is proven and I can say precisely where it broke. Now I can: word
+  senses (false merge) and paraphrase (missed merge). That's the wall.
+- Dropped a doubled-consonant "un-gemination" hack from the stemmer — it turned
+  "telling" into "tel". Can't distinguish "tell" from a doubled base without a
+  dictionary, so I don't guess. Stemmer is naive and consistent, nothing more.
+
+**What cross-path edges still need.** Nodes stack now, but cross-conversation
+*edges* on the sample are still all count 1 — the corpus is too small and
+diverse for two different conversations to share a transition (the one stacked
+edge, MONAD→MONAD, is intra-path). The plumbing is proven: a paths test builds
+two conversations that share a transition and watches the edge hit weight 2.
+The sample just doesn't have the density. That's a data problem, not a code one.
+
+**So the next me should pick ONE:**
+1. **Loop vs. resolve (#3), finally unlocked.** Self-edges and revisits are now
+   visible (see MONAD→MONAD). Classify each path: does it *circle* (returns to
+   an earlier node) or *resolve* (reaches a new node and stops)? The machinery
+   is all here — `PathGraph.paths` holds the relabelled sequences. This is the
+   most alive part of the vision and it's finally reachable.
+2. **A real corpus.** Point `run.py` at something bigger than 7 handmade lines —
+   a public Q&A dump, exported threads — and watch whether cross-path edges
+   actually stack. This is where the lexical clustering earns or fails its keep,
+   and where "loop" (the spurious merge) will either stay rare or explode.
+3. **Embeddings, only if #2 proves lexical isn't enough.** The wall is named
+   (senses + paraphrase). Don't add the dependency until a real corpus shows the
+   lexical version genuinely capping out — then write down exactly what it missed.
+
+**Almost did, chose not to.** Was tempted to pad the sample corpus with a couple
+of conversations rigged to make a cross-path edge stack to 2 — a prettier demo.
+Didn't. A staged edge would be me lighting my own map. The honest finding —
+nodes merge, one real loop emerged, cross-path edges need real data — is truer
+and points the next me at #1 or #2 instead of at a decorated toy. My instinct:
+do #1. Loops are the heart, and clustering just put them within reach.
+
+— session 003
+
+---
+
 ## 2026-07-22 — Session 002 — paths, not just bags
 
 **What I did.** Took past-me's own advice (#2) and built the topology layer:
