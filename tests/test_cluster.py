@@ -120,5 +120,63 @@ class TestClusterQuestions(unittest.TestCase):
         self.assertEqual(clustering.label("never seen"), "never seen")
 
 
+class TestNegationScaffolding(unittest.TestCase):
+    """Negation is sentence machinery, not topic (session 007).
+
+    On the real Socratic corpus, the words ``not``/``no``/``nor``/``neither``
+    survived stopword stripping and made every negated, rhetorical, and tag
+    question collapse to a fingerprint dominated by ``not``. That turned
+    ``"why not"`` into a hub matching anything else carrying a negation, and
+    single-linkage welded 23 unrelated questions — the paradox of inquiry among
+    them — into one garbage super-node. See JOURNAL.md, sessions 006/007.
+    """
+
+    def test_negation_words_are_dropped(self):
+        for word in ("not", "no", "nor", "neither"):
+            with self.subTest(word=word):
+                self.assertNotIn(word, content_words(f"is virtue {word} taught"))
+
+    def test_pure_rhetorical_negation_has_empty_fingerprint(self):
+        # "why not" asks nothing on its own — no content word survives.
+        self.assertEqual(content_words("why not"), frozenset())
+        self.assertEqual(content_words("is it not so"), frozenset())
+
+    def test_bare_negation_prompt_hubs_nothing(self):
+        # The failure in miniature: three questions that used to collapse onto
+        # {not}. With negation stripped, "why not" is contentless and merges
+        # with no one; the other two keep only their real topic word.
+        weights = collections.Counter(
+            {"why not": 1, "am i not right": 1, "do you not agree": 1}
+        )
+        clustering = cluster_questions(weights)
+        self.assertEqual(clustering.merged_node_count, 0)
+        self.assertEqual(clustering.label("why not"), "why not")
+
+    def test_polarity_folds_to_the_same_topic_node(self):
+        # A deliberate design call: on a map of *what is being wrestled with*,
+        # asserting X and questioning not-X are the same inquiry. The polarity
+        # is the answer under test, not a different question.
+        weights = collections.Counter(
+            {"is virtue taught": 1, "virtue is not taught": 1}
+        )
+        clustering = cluster_questions(weights)
+        self.assertEqual(
+            clustering.label("is virtue taught"),
+            clustering.label("virtue is not taught"),
+        )
+
+    def test_good_partial_merge_is_not_collateral_damage(self):
+        # Guard against the tempting-but-wrong "min-fingerprint" fix: a singleton
+        # fingerprint matching a doubleton at Jaccard 0.5 is sometimes right
+        # ({recursion} ~ {recursion, understand}) and sometimes the old blob
+        # ({not} ~ {not, right}). Nothing lexical separates them, so the negation
+        # fix must target the *word*, never the fingerprint size — this founding
+        # merge has to survive it. (Its bad twin is killed by the test above.)
+        weights = collections.Counter(
+            {"what is recursion": 1, "i want to understand recursion": 1}
+        )
+        self.assertEqual(cluster_questions(weights).merged_node_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

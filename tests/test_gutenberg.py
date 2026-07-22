@@ -9,6 +9,7 @@ paradox of inquiry, the loop this whole corpus was chosen for, survives ingest.
 import os
 import unittest
 
+from cartographer.corpus import load_jsonl
 from cartographer.ingest.gutenberg import (
     Turn,
     dialogue_to_conversation,
@@ -16,10 +17,12 @@ from cartographer.ingest.gutenberg import (
     parse_turns,
     strip_boilerplate,
 )
+from cartographer.paths import build_graph
 
 _HERE = os.path.dirname(__file__)
 _MENO = os.path.join(_HERE, "..", "examples", "gutenberg", "meno.txt")
 _EUTHYPHRO = os.path.join(_HERE, "..", "examples", "gutenberg", "euthyphro.txt")
+_CORPUS = os.path.join(_HERE, "..", "examples", "socratic_dialogues.jsonl")
 
 # A miniature dialogue in the Gutenberg/Plato shape: boilerplate fences, a
 # scholarly preface, a PERSONS line, a SCENE label, and CRLF-wrapped turns.
@@ -163,6 +166,45 @@ class RealDialogueIntegrationTests(unittest.TestCase):
             convo = dialogue_to_conversation(fh.read(), "euthyphro")
         self.assertEqual(set(convo["speakers"]), {"SOCRATES", "EUTHYPHRO"})
         self.assertGreater(len(convo["turns"]), 150)
+
+
+@unittest.skipUnless(os.path.exists(_CORPUS), "committed socratic corpus not present")
+class OverMergeRegressionTests(unittest.TestCase):
+    """The wall session 006 found and session 007 cleared, guarded on real data.
+
+    Before the fix, ``run.py --cluster`` on this corpus produced a headline node
+    ``"why not"`` (count 26) that had swallowed 23 unrelated questions — the
+    paradox of inquiry included — because negation scaffolding survived stopword
+    stripping and single-linkage chained the whole family together. These assert
+    the map's headline is no longer garbage.
+    """
+
+    _PARADOX = "how will you enquire, socrates, into that which you do not know"
+
+    @classmethod
+    def setUpClass(cls):
+        # Clustering the 390-question corpus is O(n^2); build it once and share.
+        cls.clustering = build_graph(load_jsonl(_CORPUS), cluster=True).clustering
+
+    def test_why_not_no_longer_hubs(self):
+        # "why not" is contentless now: its own node, folding in no one.
+        self.assertEqual(self.clustering.label("why not"), "why not")
+        self.assertEqual(len(self.clustering.members["why not"]), 1)
+
+    def test_paradox_of_inquiry_survives_as_its_own_node(self):
+        # The question the whole corpus was chosen for is a node in its own
+        # right, not a phrasing absorbed into a negation blob.
+        self.assertEqual(self.clustering.label(self._PARADOX), self._PARADOX)
+        self.assertNotEqual(
+            self.clustering.label(self._PARADOX), self.clustering.label("why not")
+        )
+
+    def test_no_giant_negation_super_node_remains(self):
+        # No node absorbs anywhere near the old blob's 24 phrasings. (A smaller
+        # single-linkage hub still remains — see JOURNAL.md, session 007 — but
+        # the pathological negation merge is gone.)
+        largest = max(len(ms) for ms in self.clustering.members.values())
+        self.assertLess(largest, 20)
 
 
 if __name__ == "__main__":
