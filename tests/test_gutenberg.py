@@ -170,13 +170,15 @@ class RealDialogueIntegrationTests(unittest.TestCase):
 
 @unittest.skipUnless(os.path.exists(_CORPUS), "committed socratic corpus not present")
 class OverMergeRegressionTests(unittest.TestCase):
-    """The wall session 006 found and session 007 cleared, guarded on real data.
+    """Two over-merge walls, cleared across sessions 006-008, guarded on real data.
 
-    Before the fix, ``run.py --cluster`` on this corpus produced a headline node
-    ``"why not"`` (count 26) that had swallowed 23 unrelated questions — the
-    paradox of inquiry included — because negation scaffolding survived stopword
-    stripping and single-linkage chained the whole family together. These assert
-    the map's headline is no longer garbage.
+    Session 006 found a headline node ``"why not"`` (count 26) that had swallowed
+    23 unrelated questions because negation scaffolding survived stopword
+    stripping; session 007 cleared it by stopwording negation. That left a
+    smaller 15-member ``"what do you mean / say / answer"`` hub, welded by the
+    low-information vocative "socrates" chaining through single-linkage; session
+    008 cleared it with document-frequency weighting. These assert the map's
+    headline is a real recurring question, not scaffolding.
     """
 
     _PARADOX = "how will you enquire, socrates, into that which you do not know"
@@ -199,12 +201,23 @@ class OverMergeRegressionTests(unittest.TestCase):
             self.clustering.label(self._PARADOX), self.clustering.label("why not")
         )
 
-    def test_no_giant_negation_super_node_remains(self):
-        # No node absorbs anywhere near the old blob's 24 phrasings. (A smaller
-        # single-linkage hub still remains — see JOURNAL.md, session 007 — but
-        # the pathological negation merge is gone.)
+    def test_no_giant_super_node_remains(self):
+        # Both hubs are gone: the negation blob (session 007) and the vocative
+        # bridge-word hub (session 008). The old blob was 24 phrasings and the
+        # bridge hub 15; the largest node is now a handful. Bound set well below
+        # the 15-member hub so a regression of the bridge fix trips this.
         largest = max(len(ms) for ms in self.clustering.members.values())
-        self.assertLess(largest, 20)
+        self.assertLess(largest, 8)
+
+    def test_headline_is_a_real_recurring_question(self):
+        # With both hubs dissolved, the stacked nodes are genuine recurring
+        # inquiries. The teachability of virtue — the spine of the Meno — folds
+        # several distinct phrasings into one node, and every one is about virtue
+        # or its being taught (no scaffolding riding along).
+        rep = self.clustering.label("virtue cannot be taught")
+        members = self.clustering.members[rep]
+        self.assertGreaterEqual(len(members), 3)
+        self.assertTrue(all("virtue" in m or "taught" in m for m in members))
 
 
 if __name__ == "__main__":

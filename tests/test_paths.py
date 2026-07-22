@@ -114,6 +114,13 @@ class TestPathGraph(unittest.TestCase):
         convos = [
             {"turns": ["What is recursion?", "How does it stop?"]},
             {"turns": ["I want to understand recursion.", "How does it stop?"]},
+            # Two "understand X" asks establish that "understand" is common
+            # framing while "recursion" is the rare, topical word — so the
+            # document-frequency-weighted merge fires on the topic, not the
+            # scaffolding. (On a bare two-question corpus there is no frequency
+            # signal, and the clusterer rightly stays cautious — see test_cluster.)
+            {"turns": ["I want to understand closures."]},
+            {"turns": ["I want to understand pointers."]},
         ]
         graph = build_graph(convos, cluster=True)
         # The two recursion phrasings collapse to one node, so it stacks to 2...
