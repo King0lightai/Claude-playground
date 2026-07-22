@@ -15,6 +15,7 @@ next big step and lives in a future session. See JOURNAL.md.
 
 import collections
 
+from .cluster import DEFAULT_THRESHOLD, cluster_questions
 from .corpus import conversation_texts
 from .extract import extract_questions
 
@@ -58,6 +59,9 @@ class PathGraph:
         self.nodes: "collections.Counter[str]" = collections.Counter()
         self.edges: "collections.Counter[Edge]" = collections.Counter()
         self.paths: list[list[str]] = []
+        # Set when the graph was built with node-merging; None otherwise. Lets
+        # callers ask which phrasings folded into a node (see cluster.Clustering).
+        self.clustering = None
 
     def add_path(self, path: list[str]) -> None:
         """Fold one path into the graph."""
@@ -103,9 +107,32 @@ class PathGraph:
         return self.edges.most_common(n)
 
 
-def build_graph(conversations: list[dict]) -> PathGraph:
-    """Build a :class:`PathGraph` from a list of conversation dicts."""
+def build_graph(
+    conversations: list[dict],
+    *,
+    cluster: bool = False,
+    threshold: float = DEFAULT_THRESHOLD,
+) -> PathGraph:
+    """Build a :class:`PathGraph` from a list of conversation dicts.
+
+    With ``cluster=False`` (the default) two questions are the same node only if
+    they normalize to the same string — the naive view. With ``cluster=True``,
+    paraphrases are folded first (see :mod:`cartographer.cluster`): the corpus's
+    questions are merged into nodes by content-word similarity, every path is
+    relabelled to its nodes' representatives, and the resulting
+    :class:`~cartographer.cluster.Clustering` is stored on ``graph.clustering``.
+    Merging is what lets edges start to stack — the first time the map shows
+    weather instead of a scatter of count-1 roads.
+    """
+    raw_paths = [conversation_path(conversation) for conversation in conversations]
+
     graph = PathGraph()
-    for conversation in conversations:
-        graph.add_conversation(conversation)
+    if cluster:
+        counts = collections.Counter(q for path in raw_paths for q in path)
+        clustering = cluster_questions(counts, threshold)
+        graph.clustering = clustering
+        raw_paths = [[clustering.label(q) for q in path] for path in raw_paths]
+
+    for path in raw_paths:
+        graph.add_path(path)
     return graph

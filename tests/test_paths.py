@@ -99,6 +99,29 @@ class TestPathGraph(unittest.TestCase):
         self.assertEqual(graph.path_count, 2)
         self.assertEqual(graph.nodes["what is recursion"], 2)
         self.assertEqual(graph.successors("what is recursion").total(), 2)
+        self.assertIsNone(graph.clustering)
+
+    def test_build_graph_without_clustering_keeps_paraphrases_apart(self):
+        convos = [
+            {"turns": ["What is recursion?"]},
+            {"turns": ["I want to understand recursion."]},
+        ]
+        graph = build_graph(convos)
+        # Two phrasings, two nodes — the naive view can't see they're one.
+        self.assertEqual(graph.node_count, 2)
+
+    def test_build_graph_with_clustering_merges_paraphrases(self):
+        convos = [
+            {"turns": ["What is recursion?", "How does it stop?"]},
+            {"turns": ["I want to understand recursion.", "How does it stop?"]},
+        ]
+        graph = build_graph(convos, cluster=True)
+        # The two recursion phrasings collapse to one node, so it stacks to 2...
+        self.assertEqual(graph.nodes["what is recursion"], 2)
+        # ...and the shared transition now stacks too — the map showing weather.
+        self.assertEqual(graph.edges[("what is recursion", "how does it stop")], 2)
+        self.assertIsNotNone(graph.clustering)
+        self.assertEqual(graph.clustering.merged_node_count, 1)
 
 
 if __name__ == "__main__":
