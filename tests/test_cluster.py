@@ -288,6 +288,94 @@ class TestDocumentFrequencyWeighting(unittest.TestCase):
         # bad bridge refused
         self.assertEqual(clustering.label("why not, socrates"), "why not, socrates")
 
+    def test_marginal_bridge_cannot_weld_two_families(self):
+        # Session 009's knife-edge, in miniature. The bare-vocative question
+        # {teacher} clears the threshold with BOTH the mean-family {mean,
+        # teacher} and the say-question {say, teacher} — under every-pair
+        # single-linkage those knife-edge links weld all of them into one blob
+        # even though the families themselves never match (0.36). Under
+        # best-match linkage the bridge contributes only its strongest bond, so
+        # it joins its closest kin (the say-question) and the mean-family stays
+        # its own node. The fillers tune document frequencies so the bridge
+        # word ("teacher", df 4) weighs slightly MORE than the family words
+        # ("mean" df 5, "say" df 6) — that's what puts the links at the
+        # knife-edge instead of letting DF-weighting refuse them outright.
+        weights = collections.Counter(
+            {
+                "how do you mean, teacher": 1,  # -> {mean, teacher}
+                "what do you mean, teacher": 1,  # -> {mean, teacher}
+                "why do you say that, teacher": 1,  # -> {say, teacher}
+                "why not, teacher": 1,  # -> {teacher}, the marginal bridge
+                # fillers making "mean" common (df 5)
+                "what does the word mean": 1,
+                "what could this possibly mean": 1,
+                "does the oracle mean well": 1,
+                # fillers making "say" a touch more common still (df 6)
+                "what did the poet say": 1,
+                "say the verse again": 1,
+                "who can say for certain": 1,
+                "did the oracle say anything": 1,
+                "say something true": 1,
+            }
+        )
+        importance = importance_weights(sorted(weights))
+        bridge, mean_q, say_q = (
+            "why not, teacher",
+            "what do you mean, teacher",
+            "why do you say that, teacher",
+        )
+        # Premise guards: the weld WOULD happen under every-pair linkage —
+        # the bridge clears the threshold with both families, the families
+        # never clear it with each other, and the bridge's closest kin is the
+        # say-question. If a weighting change breaks these, the test is no
+        # longer exercising the linkage and must be re-tuned.
+        self.assertGreaterEqual(similarity(bridge, mean_q, importance), 0.5)
+        self.assertGreaterEqual(similarity(bridge, say_q, importance), 0.5)
+        self.assertLess(similarity(mean_q, say_q, importance), 0.5)
+        self.assertGreater(
+            similarity(bridge, say_q, importance),
+            similarity(bridge, mean_q, importance),
+        )
+
+        clustering = cluster_questions(weights)
+        # the mean-family survives as its own node...
+        self.assertEqual(
+            clustering.label("how do you mean, teacher"),
+            clustering.label("what do you mean, teacher"),
+        )
+        # ...unwelded from the say-question...
+        self.assertNotEqual(clustering.label(mean_q), clustering.label(say_q))
+        # ...and the bridge joined its closest kin instead of welding families.
+        self.assertEqual(clustering.label(bridge), clustering.label(say_q))
+
+    def test_star_shaped_node_survives_best_match(self):
+        # The trap on the other side (why not complete/average linkage): a GOOD
+        # cluster can be a star — every paraphrase matches the hub phrasing but
+        # the paraphrases don't all match each other (the virtue node on the
+        # real corpus is exactly this shape). Best-match linkage must keep it
+        # whole: every leaf's strongest bond is the hub.
+        weights = collections.Counter(
+            {
+                "is virtue taught": 1,  # hub {virtue, taught}
+                "do you agree that virtue is taught": 1,  # leaf {agree, ...}
+                "if virtue is knowledge, virtue will be taught": 1,
+                "virtue cannot be taught": 1,
+            }
+        )
+        importance = importance_weights(sorted(weights))
+        hub = "is virtue taught"
+        leaves = [q for q in weights if q != hub]
+        # Premise guards: it really is a star — leaves clear the threshold
+        # with the hub but not with each other.
+        for leaf in leaves:
+            self.assertGreaterEqual(similarity(hub, leaf, importance), 0.5)
+        for i, a in enumerate(leaves):
+            for b in leaves[i + 1 :]:
+                self.assertLess(similarity(a, b, importance), 0.5)
+
+        clustering = cluster_questions(weights)
+        self.assertEqual(len(clustering.members[clustering.label(hub)]), 4)
+
     def test_weighting_is_order_independent(self):
         forward = cluster_questions(
             collections.Counter(

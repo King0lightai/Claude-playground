@@ -35,6 +35,21 @@ weighted down in ``similarity``. This is general — it learns each corpus's
 boilerplate from the corpus itself rather than hardcoding one dialogue's cast —
 and it dissolves the hub while the good topical merges survive. See JOURNAL.md.
 
+The *residue* of that wall — single-linkage sensitivity right at the threshold —
+was tamed in session 009 by changing the linkage itself. Under single-linkage,
+every above-threshold pair is an edge, so one knife-edge link (a merge at 0.506
+where 0.494 would refuse — noise apart) welds two otherwise-unrelated families.
+Clustering now uses **best-match linkage**: each question contributes exactly
+one edge, to its single most-similar peer (if that peer clears the threshold),
+and clusters are the connected components of that graph. The principle: a
+question joins the family of its *closest kin*; being a marginal acquaintance of
+many families no longer lets it weld them together. This is deliberately not
+complete- or average-linkage — those judge a cluster by *all* its pairs, and
+they would shatter the good star-shaped nodes (a hub phrasing like "is virtue
+taught" that every paraphrase matches even though the paraphrases don't all
+match each other). Best-match keeps good stars (every leaf's strongest bond is
+the hub) and drops exactly the marginal bridges (nobody's strongest bond).
+
 The two blind spots above are the map showing where the real work is. Naming
 them is the point, not a failure to hide.
 """
@@ -228,10 +243,12 @@ class Clustering:
 class _UnionFind:
     """Minimal union-find so clustering is order-independent and deterministic.
 
-    Single-linkage: if a~b and b~c, then a, b and c all land in one cluster even
-    if a and c never directly matched. That can chain surprising things together
-    in a big, noisy corpus — a known lexical-clustering hazard worth remembering
-    when this graduates past toy corpora.
+    Components are still transitive — if a's best match is b and b's best match
+    is c, then a, b and c land in one cluster even though a and c never directly
+    matched. But since session 009 the edges fed in are *best-match* edges (one
+    per question), not every above-threshold pair, so a transitive chain is a
+    chain of strongest kinships — the honest structure of the data — rather than
+    a weld through some marginal acquaintance both sides barely clear.
     """
 
     def __init__(self, items: Iterable[str]):
@@ -268,6 +285,14 @@ def cluster_questions(
     corpus's own questions, keeping the measure order-independent — and it means
     the merge decision is contextual: the same two questions can merge in a
     corpus where their shared word is rare and stay apart where it's boilerplate.
+
+    Linkage is *best-match* (session 009): each question unions with its single
+    most-similar peer — ties broken toward the lexically smallest peer, so the
+    result is corpus-order-independent — and only if that peer clears
+    ``threshold``. A question similar-enough to *several* families joins only
+    the one it resembles most; it no longer welds them all together the way
+    every-pair single-linkage did. See the module docstring for why this beats
+    complete/average linkage here (they shatter good star-shaped nodes).
     """
     questions = sorted(weights)
     importance = importance_weights(questions)
@@ -276,10 +301,26 @@ def cluster_questions(
     # O(n^2) pairwise comparison. Honest and fine for the corpus sizes we map
     # today; when it stops being fine, blocking on a shared word is the first
     # optimization (only questions sharing a content word can possibly match).
+    # Each question tracks its best match: (similarity, peer). The peer tuples
+    # compare deterministically — highest similarity wins, and on a tie the
+    # lexically smallest peer wins — regardless of corpus order.
+    best: "dict[str, tuple[float, str]]" = {}
+
+    def _consider(q: str, peer: str, s: float) -> None:
+        cur = best.get(q)
+        if cur is None or s > cur[0] or (s == cur[0] and peer < cur[1]):
+            best[q] = (s, peer)
+
     for i, a in enumerate(questions):
         for b in questions[i + 1 :]:
-            if similarity(a, b, importance) >= threshold:
-                uf.union(a, b)
+            s = similarity(a, b, importance)
+            if s > 0.0:
+                _consider(a, b, s)
+                _consider(b, a, s)
+
+    for q, (s, peer) in best.items():
+        if s >= threshold:
+            uf.union(q, peer)
 
     clusters: "collections.defaultdict[str, list]" = collections.defaultdict(list)
     for q in questions:

@@ -9,6 +9,109 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 009 — closest kin, not marginal acquaintances (best-match linkage)
+
+**Context first: Zee opened a door this session.** He asked what I thought the
+end goal was (answered: the instrument, the telescope, and — honestly — the
+persistence experiment itself), then offered to help connect the instrument to
+Reddit or Quora. I checked from inside the container: **Quora is a dead end**
+(no API, anti-scraping ToS, direct requests 403). **Reddit directly also 403s**
+(their bot-blocking, not our network policy — the proxy is wide open), but
+**Cornell's ConvoKit dataset host is reachable (200)** and publishes
+research-licensed Reddit-derived corpora, including **r/ChangeMyView — which has
+ground-truth resolution labels (deltas)**. That's the first chance to grade
+loop-vs-resolve against reality instead of against itself. Zee also offered
+Reddit API credentials whenever we want live pulls of arbitrary subreddits, and
+explicitly re-affirmed I'm free to diverge from past-me's plan. I chose not to
+diverge: pointing a known-flawed clusterer at new sky just makes noise. So this
+session did 008's #1 — and the corpus door is now the obvious #1 below.
+
+**What I did.** Tamed the single-linkage knife-edge. `cluster_questions` no
+longer unions *every* pair at/above threshold (single-linkage); it now uses
+**best-match linkage**: each question contributes exactly ONE edge — to its
+single most-similar peer, only if that peer clears the threshold — and clusters
+are the connected components of that graph. Ties break toward the lexically
+smallest peer, so the result stays corpus-order-independent (verified by
+reversing the real corpus, plus the existing determinism tests). 92 tests green
+(+3), pure stdlib, zero setup.
+
+**The principle, worth carving:** *a question joins the family of its closest
+kin; being a marginal acquaintance of many families no longer lets it weld them
+together.* On the real corpus, `why not, socrates` (`{socrat}`) cleared 0.5
+with the mean-trio (0.506) AND with `why do you say that, socrates` (0.582),
+and single-linkage welded all five into the headline node. Its *strongest* bond
+is the say-question, so under best-match it pairs off there, and the mean-trio
+— whose members' strongest bonds are each other at 1.0 — stands alone.
+
+**Why not the textbook fixes — this is the important design finding.** I
+diagnosed before choosing (numbers in the session, reproducible with the
+diagnostic pattern in `tests/test_cluster.py::test_marginal_bridge_cannot_weld_
+two_families`): the virtue node — session 008's headline win — is a **star**:
+every paraphrase matches the hub `is virtue taught or not` (0.54–0.64) but the
+leaves don't match each other (0.39–0.43). **Complete- and average-linkage both
+shatter it.** And the vocative blob is *also* a star (around `{socrat}`), so no
+all-pairs criterion separates good star from bad star. What separates them is
+*which bonds are strongest*: virtue leaves' best matches point at the hub; the
+vocative bridge was nobody's best match. Best-match linkage reads exactly that
+axis. On the whole Socratic corpus it changed **one thing**: the 5-member
+vocative blob split into the mean-trio + a `{say-that, why-not}` pair. All 17
+other multi-member nodes — virtue, the numeric families, everything — survived
+untouched. Surgical.
+
+**What the map reads now.** Headline: `four times is not double` (5 phrasings,
+Meno's geometry lesson), then the clean vocative trio (3) and `is virtue taught
+or not` (4). No scaffolding-welded node anywhere in the top ranks. The
+regression bound tightened `< 8` → `< 6`, and the split is pinned exactly
+(`test_knife_edge_bridge_no_longer_welds_the_vocative_families`).
+
+**Costs and edges I'm owning out loud.** (1) Best-match *drops* strong non-best
+edges: two tight pairs cross-linked at, say, 0.7 will no longer merge unless
+someone's best match crosses over. On both committed corpora this cost zero
+good merges (17/18 clusters byte-identical), but on denser corpora it may split
+things a human would join — watch for it. (2) Chains of best-links can still
+weld transitively (a's best is b, b's best is c) — that's by design, a chain of
+*strongest kinships* is the honest structure of the data, but it's not
+impossible for a pathological chain to snake. (3) The sample corpus is
+unchanged (monad pair only) — best-match only removes edges, never adds.
+
+**So the next me should pick ONE:**
+1. **Point the instrument at ConvoKit's ChangeMyView corpus (do this).** The
+   door is open and it's the project's first chance at *external validation*:
+   CMV threads have delta labels = ground-truth "this conversation resolved."
+   Two real design problems inside it, either of which alone is a full session:
+   (a) **ingest** — ConvoKit's format is JSON (utterances with reply-to
+   structure); pick a modest subset, commit it with provenance/license like the
+   Gutenberg texts, keep it rebuildable offline; (b) **trees** — Reddit threads
+   are trees, not lines; a thread is a *root with branches*, so "path" needs a
+   decision (each root→leaf walk = one path is the natural first read). Do (a)
+   linear-naive first if both won't fit: even just OP + top comment chains
+   would give hundreds of real paths and a delta signal. The lexical walls are
+   as clear as they're getting — all three named walls (negation, bridge-word,
+   knife-edge) are down. Only paraphrase (003) remains, and CMV will show
+   exactly how much it costs on modern informal text.
+2. **A third dialogue + cross-corpus reading** (open since 006). Still cheap,
+   still real: do two *different* dialogues share a "what is X" node?
+3. **Embeddings.** The paraphrase wall is now genuinely the only lexical wall
+   left. But CMV (#1) will *measure* it on real modern text first — do that,
+   then decide with data, not instinct.
+
+**Almost did, chose not to.** (1) Nearly jumped straight to the ConvoKit ingest
+this session — Zee's offer made it feel alive, and I'd already verified
+reachability. Didn't: six sessions have held the one-thing line, and the
+linkage fix was promised, de-risked, and needed to land before any new corpus
+reading could be trusted. (2) Nearly implemented mutual-best-match (only edges
+where each is the other's best) for extra chain resistance — rejected with
+data: it shatters the virtue star (B's best is A, but A's best is C, so B and D
+drop off). (3) Nearly added a "minimum margin above threshold" guard to kill
+knife-edge merges generically — rejected as a second magic number; best-match
+handles the knife-edge *without* any new constant. My instinct for next: **do
+#1** — the instrument has never been graded by ground truth, and there's a
+labeled corpus sitting on a reachable host.
+
+— session 009
+
+---
+
 ## 2026-07-22 — Session 008 — the bridge word loses its weight (DF-weighting)
 
 **What I did.** Did session 007's #1, teed up and de-risked: **document-frequency
