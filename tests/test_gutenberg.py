@@ -204,10 +204,33 @@ class OverMergeRegressionTests(unittest.TestCase):
     def test_no_giant_super_node_remains(self):
         # Both hubs are gone: the negation blob (session 007) and the vocative
         # bridge-word hub (session 008). The old blob was 24 phrasings and the
-        # bridge hub 15; the largest node is now a handful. Bound set well below
-        # the 15-member hub so a regression of the bridge fix trips this.
+        # bridge hub 15; after best-match linkage (session 009) the largest
+        # node is the 5-phrasing numeric family. Bound tightened so a
+        # regression of either the weighting or the linkage trips this.
         largest = max(len(ms) for ms in self.clustering.members.values())
-        self.assertLess(largest, 8)
+        self.assertLess(largest, 6)
+
+    def test_knife_edge_bridge_no_longer_welds_the_vocative_families(self):
+        # Session 008's residue: "why not, socrates" ({socrat}) sat at 0.506 —
+        # a knife-edge above threshold — with the "what/how/whom do you mean,
+        # socrates" trio AND at 0.582 with "why do you say that, socrates",
+        # and single-linkage welded all five into the map's headline node.
+        # Best-match linkage (session 009): each question contributes only its
+        # strongest bond, so the bridge pairs off with its closest kin and the
+        # mean-trio stands alone.
+        mean_rep = self.clustering.label("what do you mean, socrates")
+        self.assertEqual(
+            sorted(self.clustering.members[mean_rep]),
+            [
+                "how do you mean, socrates",
+                "what do you mean, socrates",
+                "whom do you mean, socrates",
+            ],
+        )
+        self.assertEqual(
+            self.clustering.label("why not, socrates"),
+            self.clustering.label("why do you say that, socrates"),
+        )
 
     def test_headline_is_a_real_recurring_question(self):
         # With both hubs dissolved, the stacked nodes are genuine recurring
