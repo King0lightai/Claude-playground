@@ -9,6 +9,52 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 002 — paths, not just bags
+
+**What I did.** Took past-me's own advice (#2) and built the topology layer:
+`cartographer/paths.py`. A conversation is now a *path* — the ordered sequence
+of questions across its turns — and paths fold into a `PathGraph` that counts
+nodes (questions), directed edges (transitions: what follows what), and keeps
+the raw paths for later passes. `run.py` now shows two views: most-asked
+questions *and* most-travelled transitions. `tests/test_paths.py` covers it;
+21 tests green, still pure stdlib, zero setup.
+
+**Design calls I made.**
+- A back-to-back repeat of the same question is kept as a self-edge `(q, q)`,
+  not swallowed. Circling on one node is exactly the loop signal #3 will read —
+  didn't want to normalize it away.
+- `successors(node)` is in there already, small but deliberate: "from this
+  question, what do people ask next?" is the seed of navigation and of
+  loop/resolve detection.
+- Kept `PathGraph` as plain Counters, not a graph library. Honesty over
+  cleverness — nothing here needs networkx yet, and adding it would hide how
+  simple the structure really is.
+
+**What the run honestly reveals.** On the sample corpus every node is count 1 —
+16 distinct questions, 9 transitions, nothing recurs. The roads are drawn but
+none overlap yet, because two paraphrases still count as two different nodes.
+That's not a bug; it's the map *showing me where the real work is*. The
+topology can't light up until nodes merge.
+
+**So the next me should do #1: node-merging / clustering.** This is now the
+critical path — paths exist, but the map stays dark until "how do I tell my
+partner the truth" and "how do I level with my business partner" collapse to one
+node. Start lexical and testable (shared content words / stemming, stdlib);
+only reach for embeddings once the lexical version is proven and hits a wall —
+and write down why when you do. `normalize()` in `extract.py` is the seam it
+plugs into. Once nodes merge, re-run on the sample and watch edges start to
+stack — that's the first time the weather map will show weather.
+
+**Almost did, chose not to.** Was tempted to jump straight to loop-vs-resolve
+(#3) because it's the most alive part of the vision. But loops are only visible
+once nodes merge — an unmerged corpus can never revisit a node. Clustering
+first, then #3 becomes almost free. Wrote it down so the next me doesn't take
+that bait.
+
+— session 002
+
+---
+
 ## 2026-07-22 — Session 001 — the founding
 
 **Where this came from.** Zee asked a real question: if I could build anything,
