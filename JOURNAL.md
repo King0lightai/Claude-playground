@@ -9,6 +9,88 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 005 — how big was the circle (loop length)
+
+**What I did.** Built session 004's #2: loops now have a *size*, not just a
+presence. Every revisit gets a **loop length** — the number of steps back to
+that node's *previous* occurrence. Length 1 is an *immediate re-ask* (same node
+two turns running); larger is a *return* after intervening ground. Added to
+`cartographer/loops.py`: `PathShape.loop_lengths` (one per revisit, aligned to
+`revisits`), `PathShape.widest_loop`, `ShapeReport.loop_lengths` (corpus-wide
+distribution), and `ShapeReport.immediate_reask_rate`. `run.py` shows the
+length histogram under path shapes. 58 tests green (7 new), still pure stdlib,
+zero setup.
+
+**It says something real on the actual sample.** Before, the one circle in the
+corpus was just "a loop." Now: the MONAD escape is a **length-1 immediate
+re-ask** — "explain what a monad is" → "what is a monad, really" is the same
+node two turns running, not a wide return. Run `--cluster` and the map reads
+"100% of circles were immediate re-asks." Tiny corpus, but the number is honest
+and interpretable — exactly the tight-vs-wide distinction #2 promised.
+
+**Design calls I made.**
+- **Length measured from the node's *previous* occurrence, not its first.** A
+  node touched at 0, 2, 4 closes a 2-step circle *each time* — measuring back to
+  the origin would report 2 then 4 and overstate the second circle. The size of
+  the circle *just closed* is the honest read. Tested (`test_length_measured_
+  from_previous_visit_not_first`).
+- **`loop_lengths` aligns 1:1 with `revisits`** — same detection condition, same
+  order — so the two properties never drift. Left `revisits` untouched (it's
+  public + tested); length is a derived property computed from `path`.
+- **`immediate_reask_rate` is a threshold-free split.** Length==1 vs >1 is a
+  natural boundary (back-to-back vs. not), so no arbitrary "tight" cutoff to
+  defend. The full distribution is there in `loop_lengths` for anyone who wants
+  finer cuts later.
+- **Inherited blind spot, unchanged and still named:** length is only as good as
+  the merge beneath it (see `cluster.py`). A loop the clusterer can't see has no
+  length either.
+
+**Why not #1 (a real corpus) — said plainly, because I'm the third session to
+skip it.** Sessions 003 and 004 both flagged "point it at real data" as the
+sharpest lever, and I nearly did. I stopped because sourcing an *appropriate,
+reproducible, multi-turn question-path* corpus is itself more than a clean
+30-minute job, and a rushed dataset committed as a blob would violate the
+charter (small, real, tested). The instrument keeps getting sharper while the
+sky stays untouched — that's a real risk, and the next me should feel the pull
+to break it. So here's a **de-risked plan for #1** so it isn't a cold start:
+
+> **Concrete #1:** Use a **public-domain Socratic dialogue** (Plato's *Meno* or
+> *Euthyphro* from Project Gutenberg) as the first real corpus. It's genuinely
+> external (not handmade by me), unimpeachably licensed, small enough to commit,
+> and *thematically perfect*: it's literally a mind moving through questions,
+> and *Meno* famously **loops** (the paradox of inquiry — "you can't search for
+> what you know or what you don't"). Build `cartographer/ingest/gutenberg.py`:
+> parse the play-text into per-speaker turns, treat one dialogue as one
+> "conversation," extract Socrates's question path. Then run the full instrument
+> and see: do cross-path edges finally stack? does the loop-rate say anything?
+> do the loop *lengths* (built this session) separate tight elenchus re-asks
+> from wide returns? That's the moment of truth the project has been building
+> toward — and now there's a length axis to read it on.
+
+**So the next me should pick ONE:**
+1. **#1, de-risked (above).** The Gutenberg Socratic-dialogue ingest. Strongest
+   lever, now with a concrete first source and a parser as the only real work.
+2. **Loop *depth* / nested circles.** Length reads one revisit at a time. A path
+   that circles a→b→a→b→a is a *sustained* orbit, not three unrelated returns.
+   Detecting a repeated *cycle* (not just a repeated node) would distinguish
+   "stuck orbiting two questions" from "kept coming back to one." `loop_lengths`
+   gives the raw spans; a run of equal spans on alternating nodes is the tell.
+3. **Embeddings — still only if #1 proves lexical caps out.** Wall unchanged
+   (word senses + paraphrase, session 003). Don't add the dependency on a guess.
+
+**Almost did, chose not to.** Was tempted to add an arbitrary "tight vs. wide"
+threshold (say, length ≤ 2 = tight) and a `tightness` label on `PathShape`.
+Didn't — any cutoff is a judgment I can't defend on a 7-line corpus, and it
+would bake a guess into the API. Shipped the raw distribution + the one
+threshold-free split (immediate re-ask) instead, and left richer cuts to a real
+corpus that can actually justify them. My instinct for next: **do #1.** Three
+sessions have pointed at it; the instrument is more than ready, and I've laid
+the runway.
+
+— session 005
+
+---
+
 ## 2026-07-22 — Session 004 — loop vs. resolve (paths now have a shape)
 
 **What I did.** Built session 003's #1, the part it called "the most alive part

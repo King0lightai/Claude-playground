@@ -24,6 +24,17 @@ honest, mechanical reads of revisits — no judgment about whether the *answer*
 was good, only about whether the *path* came back on itself. That's the ceiling,
 and it's the right one for a topology instrument: shape, not content.
 
+Beyond *whether* a path circled, this module also reads *how big* each circle
+was — its **loop length**: the number of steps back from a revisit to that
+node's previous occurrence. A length of 1 is an *immediate re-ask* (the same
+node two turns running — "explain what a monad is" → "what is a monad, really");
+a larger length is a *return* after intervening ground (wandered off, then came
+back). A revisit is a revisit either way, but a tight self-circle and a wide
+return after a long detour are different animals, and the length is what tells
+them apart. Measured against the node's *previous* occurrence, not its first, so
+the number is the size of the circle just closed rather than a distance to the
+origin that only grows.
+
 What this is naive about (write it down so the next me doesn't mistake it for
 truth): a revisit is only visible when two turns land on the *same node*, which
 means it inherits every blind spot of the clusterer. Two turns that a human
@@ -84,6 +95,38 @@ class PathShape:
                 out.append(node)
         return tuple(out)
 
+    @property
+    def loop_lengths(self) -> tuple:
+        """The size of each circle this path closed, in order — one per revisit.
+
+        For every step that lands on a node already seen, the length is how many
+        steps back that node's *previous* occurrence was: ``1`` for an immediate
+        re-ask (the same node two turns running), larger for a return after
+        intervening ground. Measured against the previous occurrence, not the
+        first, so a node touched three times reports the size of each fresh
+        circle rather than an ever-growing distance to where it started.
+
+        Aligns one-to-one with :attr:`revisits`: same steps, same order.
+        """
+        last_seen: dict = {}
+        lengths = []
+        for i, node in enumerate(self.path):
+            if node in last_seen:
+                lengths.append(i - last_seen[node])
+            last_seen[node] = i
+        return tuple(lengths)
+
+    @property
+    def widest_loop(self) -> int:
+        """The largest circle this path closed (``0`` if it never circled).
+
+        The path's single most telling loop number: a small value means it only
+        ever re-asked or made tight circles; a large one means it wandered far
+        before finding its way back.
+        """
+        lengths = self.loop_lengths
+        return max(lengths) if lengths else 0
+
 
 def classify_path(path: list) -> PathShape:
     """Read the shape of a single path.
@@ -111,11 +154,15 @@ class ShapeReport:
     *returned to* — the corpus's stickiest questions, the ones people keep
     circling back onto. That last one is the first genuinely map-level reading of
     the vision: not "what gets asked" but "what won't let go."
+    ``loop_lengths`` tallies, across *every* revisit in the corpus, how big the
+    circle was — the distribution that separates a corpus of tight re-asks (mass
+    at length 1) from one of wide, wandering returns (a long tail).
     """
 
     shapes: list
     outcome_counts: "collections.Counter"
     revisited_nodes: "collections.Counter"
+    loop_lengths: "collections.Counter"
 
     @property
     def loop_rate(self) -> float:
@@ -128,6 +175,19 @@ class ShapeReport:
         if not total:
             return 0.0
         return (total - self.outcome_counts[RESOLVED]) / total
+
+    @property
+    def immediate_reask_rate(self) -> float:
+        """Fraction of all revisits that were immediate re-asks (length 1).
+
+        A threshold-free split of the corpus's circles into tight self-loops
+        (the same node two turns running) versus returns after intervening
+        ground. ``0.0`` when nothing circled — no revisits to divide by.
+        """
+        total = sum(self.loop_lengths.values())
+        if not total:
+            return 0.0
+        return self.loop_lengths[1] / total
 
 
 def shape_graph(graph) -> ShapeReport:
@@ -144,11 +204,15 @@ def shape_graph(graph) -> ShapeReport:
         shape.outcome for shape in shapes
     )
     revisited_nodes: "collections.Counter" = collections.Counter()
+    loop_lengths: "collections.Counter" = collections.Counter()
     for shape in shapes:
         for node in shape.revisited_nodes:
             revisited_nodes[node] += 1
+        for length in shape.loop_lengths:
+            loop_lengths[length] += 1
     return ShapeReport(
         shapes=shapes,
         outcome_counts=outcome_counts,
         revisited_nodes=revisited_nodes,
+        loop_lengths=loop_lengths,
     )

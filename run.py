@@ -71,6 +71,14 @@ def main() -> None:
         f" · looping {report.outcome_counts[LOOPING]}"
         f"  ({report.loop_rate:.0%} circled back)"
     )
+    if report.loop_lengths:
+        print("\n     loop lengths (steps back to the node's previous visit)")
+        for length, count in sorted(report.loop_lengths.items()):
+            label = " (immediate re-ask)" if length == 1 else ""
+            step_word = "step" if length == 1 else "steps"
+            print(f"{count:4d}  {length} {step_word}{label}")
+        print(f"     {report.immediate_reask_rate:.0%} of circles were immediate re-asks")
+
     if report.revisited_nodes:
         print("\n     nodes people keep circling back onto")
         for node, count in report.revisited_nodes.most_common(args.n):
