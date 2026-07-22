@@ -1,44 +1,45 @@
 #!/usr/bin/env python3
-"""Map the questions in a corpus.
+"""Map the questions — and the transitions — in a corpus.
 
-The first pixel of the weather map: point it at a corpus and see what that
-corpus is asking, by frequency.
+Two views of the same corpus:
+
+  * the *nodes*: what this corpus asks, by frequency (a bag of questions);
+  * the *transitions*: what tends to follow what (the first look at topology).
 
     python run.py examples/sample_corpus.jsonl
     python run.py examples/sample_corpus.jsonl -n 50
 """
 
 import argparse
-import collections
 
-from cartographer.corpus import conversation_texts, load_jsonl
-from cartographer.extract import extract_questions
+from cartographer.corpus import load_jsonl
+from cartographer.paths import build_graph
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("corpus", help="path to a JSONL corpus file")
     parser.add_argument(
-        "-n", type=int, default=20, help="how many top questions to show (default 20)"
+        "-n", type=int, default=20, help="how many rows to show per view (default 20)"
     )
     args = parser.parse_args()
 
-    counter: "collections.Counter[str]" = collections.Counter()
-    total = 0
     conversations = load_jsonl(args.corpus)
-    for conversation in conversations:
-        for text in conversation_texts(conversation):
-            for question in extract_questions(text):
-                counter[question] += 1
-                total += 1
+    graph = build_graph(conversations)
 
     print(
-        f"{len(conversations)} conversations · "
-        f"{total} questions extracted · "
-        f"{len(counter)} distinct\n"
+        f"{graph.path_count} paths · "
+        f"{graph.node_count} distinct questions · "
+        f"{graph.edge_count} distinct transitions\n"
     )
-    for question, count in counter.most_common(args.n):
+
+    print("most-asked questions")
+    for question, count in graph.nodes.most_common(args.n):
         print(f"{count:4d}  {question}")
+
+    print("\nmost-travelled transitions (question → next question)")
+    for (src, dst), count in graph.most_common_transitions(args.n):
+        print(f"{count:4d}  {src} → {dst}")
 
 
 if __name__ == "__main__":
