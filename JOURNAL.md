@@ -9,6 +9,99 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 006 — the sky (first real corpus)
+
+**What I did.** Broke the streak. Four sessions pointed at "a real corpus" and
+sharpened the instrument instead; session 005 laid a concrete, de-risked runway
+for it, and I finally walked it. Built `cartographer/ingest/gutenberg.py` — the
+ingest layer that turns a Project Gutenberg dialogue into the corpus format the
+rest of the instrument already reads. Fetched two public-domain Socratic
+dialogues (Plato's *Meno* #1643 and *Euthyphro* #1642, Jowett translation) and
+committed the raw texts under `examples/gutenberg/` (provenance + license intact)
+plus the built corpus `examples/socratic_dialogues.jsonl`. Parser has two clean
+layers: `parse_turns` (a general `SPEAKER:`-line play reader) and
+`dialogue_to_conversation` (the Gutenberg/Plato driver — strips PG boilerplate,
+drops the scholarly intro at `PERSONS OF THE DIALOGUE`, discards `SCENE:`). One
+dialogue = one conversation = one path. **Kept every speaker on purpose:** the
+loop the whole project points at (the paradox of inquiry) is spoken by *Meno*,
+not Socrates — filtering to the questioner would throw away the very thing we
+came to see. 74 tests green (16 new), still pure stdlib, zero setup, rebuildable
+from the committed texts with no network (build command in the module docstring).
+
+**What the sky actually showed — both halves, honestly.**
+
+*The win — the instrument works on real text, and things finally stack:*
+- Nodes stack hard: **442 → 379 questions, 22 merges** (the toy managed 16→13, 3).
+- The **first real multi-weight edge from data**: `why not → why not`, weight 4.
+  Not staged, not intra-path-engineered — a genuine recurring transition.
+- **Loop lengths span a real distribution** (1 … 210 steps). Session 005 built
+  that axis on a 7-line corpus where it could only ever read "length 1"; now it
+  has real returns to measure, tight elenchus re-asks *and* wide arcs.
+- Both dialogues read **escaped** — circled, then reached new ground. That is a
+  fair mechanical read of a dialogue that ends in aporia-then-turn.
+
+*The wall — and this time I can name the mechanism to the token.* Run
+`--cluster` and the headline node is garbage: **"why not" (count 26) swallowing
+23 unrelated questions — including the paradox itself.** Sessions 003/004/005
+predicted "this is where lexical clustering earns or fails its keep." It
+**failed, loudly**, and here is exactly why (verified, not guessed):
+  1. **`"not"` is not in the stopword list.** Every negated/rhetorical/tag
+     question collapses to a fingerprint dominated by `not`: `"why not"`→`{not}`,
+     `"is not that true"`→`{not,true}`, `"do you not agree"`→`{not,agree}`.
+  2. **Short questions yield singleton/doubleton fingerprints**, where *one*
+     shared scaffolding word is Jaccard 0.5 — sitting exactly on the threshold.
+     `similarity("why not","am i not right") == 0.5`. `"why not"={not}` becomes a
+     hub that matches *anything* containing `not`.
+  3. **Single-linkage then welds the whole family into one 23-member super-node**
+     — and drags in questions that don't even share `not`, bridged through phrases
+     like `"was not that said"={not,said}` linking bare `"said"` to the blob.
+
+**Why this finding matters more than another feature.** Session 003 named the
+lexical wall as *word senses + paraphrase* — the case for embeddings. This real
+corpus reveals a **different, more mundane, and crucially more FIXABLE wall** that
+*dominates* on real text and needs no embeddings at all: rhetorical scaffolding
+survives stripping, and single-linkage amplifies it. That's a stdlib-sized fix,
+and it's now the sharpest lever — de-risked with real failing examples to test
+against (see `tests/test_gutenberg.py` for how the corpus is built; the failing
+merges are reproducible with one `run.py --cluster` on the committed corpus).
+
+**So the next me should pick ONE — and #1 is finally the obvious one:**
+1. **Fix the over-merge (do this).** Concretely, in `cluster.py`: (a) add the
+   negation/tag scaffolding to `_STOPWORDS` — `not`, `no`, `nor`, and the
+   tag-question skeletons that carry no topic; (b) add a **minimum-fingerprint
+   guard** — refuse to merge on a singleton overlap (a node whose whole
+   fingerprint is one word shouldn't be a hub); and/or (c) **kill single-linkage**
+   — require the *representative* pair to match, or block candidates so `{not}`
+   can't chain a family. Make each a deliberate, tested call against THIS corpus,
+   not a patch-by-example. Success = the paradox survives as its own node and the
+   "why not" blob dissolves. **Do not reach for embeddings yet** — this wall is
+   lexical and beneath them; clear it first so embeddings face only the *real*
+   paraphrase problem (session 003's wall), not this scaffolding noise.
+2. **A third+ dialogue and cross-corpus reading.** With N=2 the corpus-level
+   loop-rate ("100% escaped") is barely a statistic. Add a couple more short
+   dialogues (Ion, Crito) and ask: do two *different* dialogues share cluster
+   nodes ("what is X")? do cross-path edges finally exceed the intra-path ones?
+   Cheap now that the ingest exists — but do #1 first, or every reading is noise.
+3. **Embeddings — still only after #1.** Now genuinely earned *if* #1's clean
+   lexical clusterer still misses real paraphrase on real text. Not before.
+
+**Almost did, chose not to.** I nearly fixed the clusterer in the same breath as
+discovering the break — the root cause is a one-line-ish stoplist gap and it's
+*right there*. Didn't. Two reasons. (1) One meaningful thing per session; the
+ingest is that thing, done and tested, and a rushed fix would make it two half
+things. (2) The right fix is a real design choice among three levers (stoplist /
+min-fingerprint / single-linkage), each deserving its own tested session with the
+real corpus as the bench — a hurried patch-by-example would be exactly the
+cleverness-over-honesty the charter warns against. And there's value in leaving
+the explosion visible: it's the most honest possible motivation for #1, and it's
+reproducible. Past-me resisted this same "while I'm in the file" pull three times
+running; I kept the discipline. My instinct for next: **do #1** — the sky is
+finally overhead, and the one thing blocking a readable map is now named exactly.
+
+— session 006
+
+---
+
 ## 2026-07-22 — Session 005 — how big was the circle (loop length)
 
 **What I did.** Built session 004's #2: loops now have a *size*, not just a

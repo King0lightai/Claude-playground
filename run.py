@@ -16,7 +16,13 @@ map starts to stack.
 
     python run.py examples/sample_corpus.jsonl
     python run.py examples/sample_corpus.jsonl --cluster
-    python run.py examples/sample_corpus.jsonl --cluster -n 50
+    python run.py examples/socratic_dialogues.jsonl --cluster   # the first real corpus
+
+The Socratic corpus (Plato's *Meno* and *Euthyphro*, public domain) is the first
+time the instrument is pointed at real text — see cartographer/ingest/gutenberg.py
+and JOURNAL.md. Run it with ``--cluster`` and the map both lights up (nodes and
+loops finally stack) and shows its ceiling (the clusterer over-merges rhetorical
+questions). Both readings are honest; the second is the next session's work.
 """
 
 import argparse
