@@ -12,19 +12,27 @@ scaffolding (articles, pronouns, wh-words, discourse fillers), lightly stem
 what's left, and treat two questions as the same node when their content-word
 sets overlap enough (Jaccard similarity ≥ a threshold).
 
-It is deliberately, honestly lexical. It has two known blind spots, both of
-which the sample corpus demonstrates on purpose:
+It is deliberately, honestly lexical. It has three known blind spots, each of
+which a committed corpus demonstrates on purpose:
 
   * **Paraphrase it can't see.** "tell my business partner the truth" and "tell
     my partner something hard" share only two content words; they stay separate
     even though a human reads them as one node. Real paraphrase folding needs
-    meaning (embeddings), and that's the next wall — see JOURNAL.md.
+    meaning (embeddings), and that's the deepest wall — see JOURNAL.md.
   * **Word senses it wrongly merges.** "different from a loop" (recursion) and
     "why does it loop like that" (a stuck writer circling) both reduce to the
     word "loop" and get merged. Lexical clustering can't tell the senses apart.
+  * **Single-linkage chained through a low-information bridge word.** On the
+    Socratic corpus, the vocative "socrates" (whom the question *addresses*, not
+    what it's *about*) appears in ~20 questions, so {mean, socrat} and
+    {say, socrat} each match at Jaccard 0.5 and single-linkage welds the whole
+    "what do you mean / say / answer" family into one node. The bridge word is
+    frequent enough to be noise, not topic. This is the sharpest *fixable* wall
+    now that the negation blob is gone (session 007) — a document-frequency
+    weighting of content words is the candidate fix. See JOURNAL.md.
 
-Both limits are the map showing where the real work is. Naming them is the
-point, not a failure to hide.
+All three are the map showing where the real work is. Naming them is the point,
+not a failure to hide.
 """
 
 import collections
@@ -61,6 +69,18 @@ _STOPWORDS = frozenset(
         "into", "onto", "over", "under", "out", "up", "down", "off", "as",
         "and", "or", "but", "if", "so", "than", "then", "because", "whether",
         "while", "like", "here", "there",
+        # negation / logical connectives — scaffolding, not topic. On a map of
+        # *what is being wrestled with*, "is virtue taught" and "is virtue NOT
+        # taught" are the same node: the inquiry is the teachability of virtue;
+        # the polarity is the answer being tested, not a different question.
+        # Dropping these is also what dissolves the "why not" over-merge — the
+        # negated/rhetorical questions of a Socratic dialogue all collapsed to a
+        # fingerprint dominated by "not", making it a hub that matched anything
+        # else carrying a negation (see JOURNAL.md, session 006). Pure-rhetorical
+        # prompts ("why not", "is it not so") now carry no content word at all
+        # and so merge with nothing — which is honest: they ask nothing on their
+        # own.
+        "not", "no", "nor", "neither",
         # desire / intent framing — "i *want to* X" frames the ask, not the topic
         "want", "need", "trying", "try", "going", "gonna", "wanna",
         # discourse fillers / intensifiers — no topical content

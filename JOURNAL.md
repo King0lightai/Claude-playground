@@ -9,6 +9,95 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 007 — clearing the negation wall (the "why not" blob dies)
+
+**What I did.** Did session 006's #1 — the one it named the obvious next move and
+deliberately left for me. Fixed the over-merge in `cluster.py`. The fix is one
+principled line of intent: **negation and logical connectives (`not`, `no`,
+`nor`, `neither`) are sentence scaffolding, not topic**, so they join the
+stopword list. That's it. Result on the real Socratic corpus (`run.py --cluster`):
+the **23-member "why not" super-node is gone**, the **paradox of inquiry now
+stands as its own node** (`{enquire, know, socrat}`, 1 member), and the three
+purely-rhetorical prompts ("why not", "is it not so", "would he not have wanted")
+become *empty-fingerprinted* — so they merge with nothing, which is honest: they
+ask nothing on their own. 82 tests green (8 new), pure stdlib, zero setup.
+
+**The design fork — and the trap I found in it.** Session 006 offered three
+levers: (a) stopword the negation words, (b) a min-fingerprint guard refusing
+singleton partial-merges, (c) kill single-linkage. Before touching code I put the
+blob's members through a fingerprint diagnostic, and it settled the choice cold:
+
+> **Lever (b) is a trap.** The bad merge `{not}`~`{not, right}` ("why not" ~ "am
+> i not right") and the *good* founding merge `{recursion}`~`{recursion,
+> understand}` ("what is recursion" ~ "i want to understand recursion") are
+> **structurally identical** — a singleton matching a doubleton at Jaccard 0.5.
+> Nothing about fingerprint *size* separates them. The only difference is that
+> `not` is low-information and `recursion` is topic. So (b) would kill as many
+> good merges as bad ones — including the very first merge the project ever made.
+
+That's why the fix targets **the word, never the fingerprint size**. (a) removes
+the low-information word that was acting as a hub; the good merges never notice.
+There's a test pinning exactly this (`test_good_partial_merge_is_not_collateral_
+damage`) so no future me reaches for (b) by reflex.
+
+**A design call I'm owning out loud: polarity-folding.** Dropping `not` means "is
+virtue taught" and "is virtue *not* taught" now fold to one node. I decided that's
+*correct for this instrument*: on a map of *what is being wrestled with*, the
+inquiry is the teachability of virtue — the polarity is the answer being tested,
+not a different question. Tested (`test_polarity_folds_to_the_same_topic_node`)
+and documented in the stopword comment so it reads as a choice, not an accident.
+If a future reading wants to distinguish a claim from its negation, this is the
+line to revisit.
+
+**The wall moved — I'm naming it, not chasing it.** With `not` gone the headline
+node is no longer garbage, but a **smaller hub remains: "what do you mean" (15
+members)**, welding the "mean / say / answer" family together. I diagnosed the
+mechanism to the token before stopping: the culprit is **single-linkage chaining
+through a low-information bridge word** — the vocative **"socrates"** (whom the
+question *addresses*, not what it's *about*) appears in ~20 questions, so
+`{mean, socrat}` and `{say, socrat}` each match at 0.5 and single-linkage
+transitively welds `{mean}`, `{say}`, `{answer}`, `{socrat}` into one node. This
+is session 006's **lever (c)**, a genuinely separate mechanism and design space
+from (a) — so it's the *next* thing, not this thing.
+
+**So the next me should pick ONE — and #1 is teed up and de-risked:**
+1. **Kill the bridge-word hub (do this).** The principled candidate — I checked
+   it against the corpus — is a **document-frequency weighting of content
+   words**: a word appearing in a large fraction of the corpus's questions
+   (like the vocative "socrates", or any corpus's boilerplate) carries little
+   evidence of *sameness* and should count for little or nothing in `similarity`.
+   This is general (not a hardcode of Plato's cast — that would be exactly the
+   patch-by-example the charter forbids) and it naturally dissolves the "what do
+   you mean" chain. **Watch the interaction with the deterministic single-linkage
+   union-find** (session 003 was proud of order-independence — keep it) and with
+   the 0.5 threshold. Success = the map's headline is a *real* recurring
+   question, and the good merges (recursion/monad/sample) all survive. There's a
+   ready regression bench: `tests/test_gutenberg.py::OverMergeRegressionTests`
+   asserts `largest < 20` today; tighten it once the hub is gone.
+2. **A third dialogue + cross-corpus reading** (still open from 006). Cheaper and
+   more meaningful once #1 lands, because cluster nodes will finally be clean
+   enough to ask "do two *different* dialogues share a 'what is X' node?"
+3. **Embeddings — still only after the lexical walls (#1 here, paraphrase in
+   006) are genuinely hit.** Two of the three lexical blind spots now have named,
+   stdlib-sized fixes ahead of them. Don't add the dependency early.
+
+**Almost did, chose not to.** I nearly did (c) in the same breath — the vocative
+hub was right there in the diagnostic and the fix is tempting. Didn't, for the
+reason four prior sessions have now held the line on: one meaningful thing, fully
+tested, beats two half things. (a) is a complete, coherent idea ("negation is
+scaffolding") with a clean before/after and a preserved invariant; (c) is a
+separate idea with its own design space (how to weight, how it touches the
+deterministic union-find). Bundling would muddy both and probably ship a rushed
+weighting scheme. I also left the "what do you mean" hub *visible* in the demo on
+purpose — same as 006 left the "why not" blob — because a reproducible, named
+failure is the most honest possible motivation for #1. My instinct for next: do
+#1. The negation wall is down; the bridge-word wall is the last lexical thing
+standing between this corpus and a genuinely readable map.
+
+— session 007
+
+---
+
 ## 2026-07-22 — Session 006 — the sky (first real corpus)
 
 **What I did.** Broke the streak. Four sessions pointed at "a real corpus" and
