@@ -9,6 +9,125 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 010 — the answer key arrives (ChangeMyView ingest, first external ground truth)
+
+**What I did.** Did session 009's #1 — the door it opened and left. Built
+`cartographer/ingest/convokit.py`, the ingest for ConvoKit's *winning-args*
+corpus (Reddit **r/ChangeMyView**), and committed a small, balanced, **labeled**
+subset. This is the first corpus the instrument has ever read that carries an
+*external answer key*: each CMV comment has a `success` label — `1` on a path
+that earned a **delta** (the poster's view changed), `0` on a comparable
+challenger path that didn't. Every reading before this — loop vs. resolve, the
+whole point of the project — was graded only against itself. Now there's ground
+truth. 110 tests green (+18), pure stdlib, zero setup, rebuilt offline from the
+committed subset.
+
+**The shape of the work — two clean layers, mirroring the Gutenberg ingest.**
+(1) *General ConvoKit readers*: `group_by_root` reconstructs each conversation
+**tree** from the flat `reply-to` edges, `walk_to_root` walks any node back to
+the root. They know nothing about CMV. (2) *CMV driver*: `labeled_paths` +
+`cmv_conversations`. Session 009 flagged the real design fork — **a Reddit thread
+is a tree, not a line, so "one path" is a decision.** I took the natural first
+read it named (each root→leaf branch = one path) but *only* for branches ending
+at a `success`-labeled leaf, so every emitted path carries the delta label. That
+turns one sprawling tree into a *handful of resolved/unresolved paths* instead of
+the dozens of near-duplicate walks a full tree holds.
+
+**The subset, and why these numbers.** The full corpus is ~344 MB / 293k
+utterances / 3,051 threads — uncommittable. I committed the **30 smallest threads
+that have both a delta path and a challenger path** (all their utterances, so
+trees fully reconstruct): 483 utterances / ~390 KB →
+`examples/convokit/cmv_sample_utterances.jsonl`. Built,
+that's `examples/cmv_sample.jsonl`: **66 labeled paths, 34 delta / 32 non-delta.**
+Balanced on purpose — neither class a rounding error, so it can actually be
+graded. Selection is deterministic and the exact reproduction script is in
+`examples/convokit/PROVENANCE.md` (source, license, WWW-2016 paper).
+
+**First light found CMV's boilerplate wall — and I fixed it, because it's a
+fixed template, not a linguistic phenomenon.** On the very first `run.py
+--cluster` the headline nodes were garbage: "any questions or concerns" (17) and
+"com/message/compose" (17) — the **moderator rules footer** appended to nearly
+every CMV submission (`_____` rule + "Hello, users of CMV! ..."), on 8 of 30 OPs
+× ~2 paths each. This is the *exact CMV analogue* of the Project Gutenberg
+header/footer the other ingest already strips — so I added `strip_cmv_footer` to
+the driver (regex from the introducing rule to end), the direct parallel to
+`gutenberg.strip_boilerplate`. **Why fix it here, when 006/007 deliberately left
+walls visible?** Those were *linguistic* walls (negation, bridge words) whose
+fix was a real design choice worth its own session. This is a fixed template
+string — leaving it in would just make the *committed corpus artifact* dirty, and
+stripping known boilerplate is squarely the ingest's job, not a punted design
+call. After stripping, the headline reads real: the football-hype debate, the
+fridge-layout view, the news-media thread, the store-refusal argument.
+
+**A design call I'm owning: light touch on the rest.** Text is HTML-unescaped
+(`&gt;`→`>`, `&#8710;`→∆ — pure encoding artifacts) and otherwise **verbatim**.
+Reddit markdown that survives — quote markers (`>`), inline links that the
+extractor splits into junk like `com/watch` — I left in and *named* as a known
+limitation rather than massaging. Over-cleaning on 30 threads I can't calibrate
+against would be exactly the cleverness-over-honesty the charter warns against.
+Bot accounts (DeltaBot, AutoModerator) *are* dropped — they're the forum's
+plumbing confirming deltas, not participants thinking (same call Gutenberg makes
+for `SCENE:`).
+
+**The first external reading — and it's a genuine, humbling result.** I ran the
+instrument and cross-tabbed the mechanical shape against the delta label (paths
+with ≥1 extracted question):
+
+> circled-back rate: **delta 1/26 · non-delta 2/21** — both essentially zero.
+
+So **our current loop/resolve shape does NOT predict resolution on CMV.** That's
+not a bug and I'm not hiding it — it's the first honest calibration, and it says
+two true things the next me needs. (1) Node-merging only fires *within* a path,
+and these labeled paths are short (2–5 turns), so almost nothing revisits a node
+— the shape signal is starved. (2) More fundamentally: our "loop" means a
+*question* was re-asked, but a CMV delta measures whether an *argument was
+accepted*. **These may just be different axes.** Ground truth's first lesson is
+that the thing we've been measuring and the thing that "resolves" a CMV thread
+might not be the same thing — which is *exactly* the kind of finding you can only
+get from an answer key.
+
+**So the next me should pick ONE:**
+1. **Grade properly — build the harness and go wider (do this).** This session
+   built the labeled instrument; now *use* it. Two moves, either a full session:
+   (a) **A shape-vs-delta grading harness** — a `run.py --grade`-ish reading (or
+   a `cartographer/grade.py`) that reports the crosstab above as a first-class
+   output, so the correlation (or its absence) is measured, not hand-computed in
+   a scratch script. (b) **Go wider and deeper** — 30 tiny threads is thin. Pull
+   a larger subset (the selection script scales trivially; watch commit size —
+   maybe commit a *builder* that samples N threads rather than a giant file), and
+   include *fuller* branches (deeper delta paths), since the shape signal is
+   starved by 2–5-turn paths. Hypothesis to test: does the shape signal appear at
+   all once paths are long enough to revisit a node?
+2. **Rethink what "resolution" means for argument, not inquiry.** If #1(a)
+   confirms question-revisit ≠ delta, the honest response is a *second* shape
+   reading suited to CMV: e.g. does the OP's *own* later turns change stance
+   (they're the `op` user — we keep `speakers`), or does a challenger's question
+   get *answered* vs *dodged*. This is real conceptual work — the instrument was
+   built for inquiry-paths (Socratic), and CMV is persuasion-paths. Name the
+   difference before coding.
+3. **Embeddings — still the last lexical wall, now measurable on real informal
+   text.** CMV is modern, messy, paraphrase-heavy. Session 009 said CMV would
+   *measure* the paraphrase cost; #1's wider pull is the corpus to measure it on.
+   Do #1 first so the decision is data-driven.
+
+**Almost did, chose not to.** (1) Nearly built the grading harness this session
+too — the crosstab was right there and it's the obvious payoff. Didn't: seven
+sessions have held the one-meaningful-thing line, the ingest + committed labeled
+corpus is a complete, coherent thing, and a rushed harness bolted on would make
+it two half-things. I ran the crosstab *once* in a scratch script to know the
+ingest was worth committing (it is — the result is a real finding), and wrote it
+down here so #1 starts warm, not cold. (2) Nearly went with a much larger subset
+(hundreds of threads) for a stronger signal — didn't; a giant committed blob
+violates "small, real," and the starved-signal finding is honest and reproducible
+at 30. (3) Nearly cleaned the residual markdown (quote markers, URL splits) —
+didn't; that's the extractor's problem and a calibration I can't defend on 30
+threads. My instinct for next: **do #1.** The instrument finally has an answer
+key; the whole point now is to be graded by it.
+
+— session 010
+
+---
+
 ## 2026-07-22 — Session 009 — closest kin, not marginal acquaintances (best-match linkage)
 
 **Context first: Zee opened a door this session.** He asked what I thought the
