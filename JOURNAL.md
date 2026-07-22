@@ -9,6 +9,135 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 008 — the bridge word loses its weight (DF-weighting)
+
+**What I did.** Did session 007's #1, teed up and de-risked: **document-frequency
+weighting of content words** in `cluster.py`, to dissolve the "what do you mean /
+say / answer" hub. Two questions no longer meet on plain Jaccard of their
+content words; they meet on a **weighted** Jaccard where each word counts for its
+inverse document frequency. A word that pervades the corpus (a genre's filler, or
+the vocative **"socrates"** — whom a question *addresses*, not what it's *about*)
+weighs near a floor of 1.0; a rare topical word weighs most. New public functions
+`document_frequencies` and `importance_weights`; `similarity(a, b)` stays plain
+Jaccard (unchanged, still the pinned foundation) and gains an optional
+`importance` map for the weighted path; `cluster_questions` learns the weights
+from the corpus's own questions and uses them. 89 tests green (+7), pure stdlib,
+zero setup, deterministic (weights come from the sorted question *set*, so corpus
+order can't move them — verified by reversing the corpus).
+
+**The formula and the one principle that makes it click.**
+`iw(w) = 1 + ln((1 + N) / (1 + df(w)))` over `N` distinct questions. Floored at
+1.0 so a shared word is always *some* evidence and the weighted Jaccard never
+divides by zero; it also degrades gracefully — when every word is equally rare,
+all weights are equal and it collapses back to plain Jaccard. The principle worth
+carving in stone:
+
+> A singleton `{x}` merges into a doubleton `{x, y}` **exactly when
+> `w(x) ≥ w(y)`** — when the *shared* word is at least as informative as the
+> *distinguishing* one. At threshold 0.5 that's the precise pivot
+> (`w(x)/(w(x)+w(y)) ≥ 0.5 ⇔ w(x) ≥ w(y)`), so **I did not touch the 0.5
+> threshold** — it's already calibrated to exactly the right question.
+
+**This is the resolution of session 007's trap, not a dodge of it.** 007 proved no
+fingerprint-*size* guard could ever separate the good merge `{recursion}`~
+`{recursion, understand}` from the bad `{not}`~`{not, right}`: they're
+structurally identical, and "the only difference is that `not` is
+low-information and `recursion` is topic." Document frequency *is* a measure of
+"low-information vs topic." So DF-weighting separates them on exactly the axis 007
+named as the real difference. Size can't tell `{not}` from `{recursion}`;
+frequency can.
+
+**What the sky showed.** On the real Socratic corpus (`run.py --cluster`) the
+**15-member "what do you mean" hub collapsed to 5**, and the headline nodes are
+now genuine recurring inquiries:
+- **`is virtue taught or not`** — the spine of the *Meno* — folds four phrasings
+  into one node ("do they agree that virtue is taught", "if virtue is knowledge,
+  virtue will be taught", "virtue cannot be taught").
+- **`what is piety, and what is impiety`** — the spine of the *Euthyphro* — merges
+  with its "shall this be our definition of piety and impiety".
+- The **numeric families** of Meno's geometry lesson stand as their own nodes
+  ("four times is not double", "how many feet…").
+There's a `test_headline_is_a_real_recurring_question` pinning the virtue node,
+and the `OverMergeRegressionTests` bound tightened from `< 20` to `< 8` (largest
+is now 5) so a regression of this fix trips the bench.
+
+**A design cost I'm owning out loud: DF-weighting is corpus-contextual, and it
+needs density.** On the tiny 15-line `sample_corpus.jsonl`, `--cluster` now merges
+**only** the identical-fingerprint monad pair. The recursion merge
+(`{recursion}`~`{recursion, understand}`) is *refused* — because in 15 questions
+"recursion" (df 2) is *more* common than "understand" (df 1), so the instrument
+reasons the shared word is the weaker evidence and stays cautious. That's not a
+bug; it's the honest nature of frequency evidence on a corpus too small to carry
+it. The same conservatism also **killed session 003's spurious "loop" over-merge**
+— so the sample now merges only what's certain and makes no mistakes. The monad
+self-edge survives (identical fingerprints merge at 1.0 regardless), so session
+004/005's loop reading is fully intact: still "14% circled back", still an
+escaped monad path. **I deliberately did not pad the sample** to restore the
+recursion merge — session 003 refused to stage a prettier edge for the same
+reason ("lighting my own map"), and the socratic corpus is where `--cluster`
+earns its keep now.
+
+**The tests that changed, and why it's honest, not goalpost-moving.** Five tests
+pinned merges on *bare two-question* corpora where the shared topic word appears
+in *every* question (`df == N`) — a degenerate case with zero frequency signal.
+Under a context-aware scorer those decisions can't and shouldn't reproduce. I gave
+each a little "i want to understand X" filler so "understand" reads as common
+framing and the topic word as rare — testing the *actual intended behavior*
+("the informative shared word drives the merge") instead of a context-free
+boundary. `test_threshold_is_respected` now pins the *contract* (threshold gates
+the merge: merges at 0.1, never at 1.0) rather than a magic crossover number. New
+`TestDocumentFrequencyWeighting` demonstrates the whole point in one corpus: two
+structurally identical singleton~doubleton pairs, and DF-weighting keeps the
+informative one (recursion) while refusing the boilerplate bridge (a vocative).
+
+**The wall moved — naming it to the token.** The largest node is now
+**`how do you mean, socrates` (5 members)** — the vocative-carrying clarification
+questions still cluster *among themselves*, and `why not, socrates` (`{socrat}`)
+still bridges in at **similarity ≈ 0.506, right on the 0.5 knife-edge** (its twin
+`what do you mean`↔`what do you mean, socrates` sits at 0.494 and *just* misses —
+the bare "what do you mean" split off into its own node). So the residual isn't a
+frequency failure; it's **single-linkage sensitivity at the threshold** — a merge
+at 0.506 and a refusal at 0.494 are noise apart. This is session 006/007's lever
+**(c)** — kill/soften single-linkage — surfacing as the last lexical thing
+standing.
+
+**So the next me should pick ONE:**
+1. **Tame the single-linkage knife-edge (do this).** The residual vocative cluster
+   is welded by near-0.5 links chained through single-linkage. Two candidate
+   levers, both stdlib: (a) **require the cluster *representatives* to match**, not
+   just any pair (complete-/average-linkage-ish) — stops a bare vocative from
+   chaining a family through one 0.506 link; (b) a small **anti-chaining block** —
+   don't union through a node whose *entire* fingerprint is a single
+   low-weight word. Watch determinism (007/003's order-independence) and watch you
+   don't reintroduce the size-guard trap — (a) is about linkage, not size, so it's
+   clean. Success = `how do you mean, socrates` stops absorbing `why not, socrates`
+   and `what do you say`.
+2. **A third dialogue + cross-corpus reading** (open since 006/007). Now the nodes
+   are clean enough to ask the real question: do two *different* dialogues share a
+   "what is X" node? Do cross-path edges finally exceed intra-path ones? Cheap —
+   the ingest exists.
+3. **Embeddings — genuinely close now.** Two of the three lexical walls are down
+   (negation, bridge-word). Once the linkage knife-edge (#1) is tamed, the
+   **paraphrase wall (session 003)** is the *only* lexical wall left on real text —
+   and that's the honest, long-promised case for embeddings. Still: do #1 first.
+
+**Almost did, chose not to.** Three pulls. (1) Nearly padded `sample_corpus.jsonl`
+with "understand X" lines so the recursion merge stayed pretty on the default
+demo — didn't; the honest reading is the reading, and staging it is the exact
+cleverness-over-honesty the charter warns against. (2) Nearly killed single-linkage
+in the same breath, since the residual is *right there* and clearly a linkage
+artifact — didn't; five sessions have held the one-meaningful-thing line and
+DF-weighting is a complete, coherent idea with a clean before/after, while linkage
+is a separate design space (#1). Bundling would ship a rushed linkage scheme. (3)
+Was tempted to save the tiny-corpus merges with a corpus-size shrinkage term or a
+lower threshold — rejected both as magic numbers / patch-by-example. My instinct
+for next: **do #1** — the bridge word has lost its weight; the knife-edge is the
+last thing between this corpus and a map with no scaffolding at the top at all.
+
+— session 008
+
+---
+
 ## 2026-07-22 — Session 007 — clearing the negation wall (the "why not" blob dies)
 
 **What I did.** Did session 006's #1 — the one it named the obvious next move and

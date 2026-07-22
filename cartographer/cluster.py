@@ -12,7 +12,7 @@ scaffolding (articles, pronouns, wh-words, discourse fillers), lightly stem
 what's left, and treat two questions as the same node when their content-word
 sets overlap enough (Jaccard similarity ≥ a threshold).
 
-It is deliberately, honestly lexical. It has three known blind spots, each of
+It is deliberately, honestly lexical. It has two known blind spots, each of
 which a committed corpus demonstrates on purpose:
 
   * **Paraphrase it can't see.** "tell my business partner the truth" and "tell
@@ -22,20 +22,25 @@ which a committed corpus demonstrates on purpose:
   * **Word senses it wrongly merges.** "different from a loop" (recursion) and
     "why does it loop like that" (a stuck writer circling) both reduce to the
     word "loop" and get merged. Lexical clustering can't tell the senses apart.
-  * **Single-linkage chained through a low-information bridge word.** On the
-    Socratic corpus, the vocative "socrates" (whom the question *addresses*, not
-    what it's *about*) appears in ~20 questions, so {mean, socrat} and
-    {say, socrat} each match at Jaccard 0.5 and single-linkage welds the whole
-    "what do you mean / say / answer" family into one node. The bridge word is
-    frequent enough to be noise, not topic. This is the sharpest *fixable* wall
-    now that the negation blob is gone (session 007) — a document-frequency
-    weighting of content words is the candidate fix. See JOURNAL.md.
 
-All three are the map showing where the real work is. Naming them is the point,
-not a failure to hide.
+A *third* wall — single-linkage chaining through a low-information bridge word —
+was cleared in session 008. On the Socratic corpus the vocative "socrates" (whom
+the question *addresses*, not what it's *about*) appeared across ~18 questions,
+so a bare {socrat} question sat at Jaccard 0.5 with both {mean, socrat} and
+{say, socrat} and single-linkage welded the whole "what do you mean / say /
+answer" family into one 15-member node. The fix is **document-frequency
+weighting** (``importance_weights`` below): a word appearing across a large
+fraction of a corpus's questions carries little evidence of *sameness*, so it is
+weighted down in ``similarity``. This is general — it learns each corpus's
+boilerplate from the corpus itself rather than hardcoding one dialogue's cast —
+and it dissolves the hub while the good topical merges survive. See JOURNAL.md.
+
+The two blind spots above are the map showing where the real work is. Naming
+them is the point, not a failure to hide.
 """
 
 import collections
+import math
 import re
 from typing import Iterable, Mapping
 
@@ -127,17 +132,74 @@ def content_words(question: str) -> frozenset:
     )
 
 
-def similarity(a: str, b: str) -> float:
-    """Jaccard overlap of two questions' content words, in ``[0.0, 1.0]``.
+def document_frequencies(questions: Iterable[str]) -> "collections.Counter[str]":
+    """How many distinct questions each content word appears in.
 
-    ``1.0`` means identical fingerprints; ``0.0`` means no shared topical word.
+    This is the raw signal for down-weighting corpus-wide boilerplate: a word
+    that shows up across a large fraction of a corpus's questions (a genre's
+    filler, or a vocative like "socrates" in a Socratic dialogue — whom the
+    question *addresses*, not what it's *about*) is weak evidence that two
+    questions carrying it are the same node. Counted over *distinct* questions,
+    so it measures how spread-out a word is across the vocabulary of questions,
+    not how often any one question was asked.
+    """
+    df: "collections.Counter[str]" = collections.Counter()
+    for q in questions:
+        for w in content_words(q):
+            df[w] += 1
+    return df
+
+
+def importance_weights(questions: Iterable[str]) -> "dict[str, float]":
+    """Inverse-document-frequency weight per content word, floored at 1.0.
+
+    ``1 + ln((1 + N) / (1 + df))`` for a corpus of ``N`` distinct questions. A
+    word unique to one question weighs most; a word in *every* question weighs
+    the floor (1.0) — never zero, so a shared word is always at least weak
+    evidence and the weighted Jaccard never divides by zero. The floor is also
+    what makes the measure degrade gracefully: when every word is equally rare
+    (no frequency signal to read) all weights are equal and weighted Jaccard
+    collapses back to plain Jaccard.
+
+    Why this dissolves the bridge-word hub without a hardcoded stoplist: a
+    singleton fingerprint ``{x}`` merges into a doubleton ``{x, y}`` exactly
+    when ``w(x) / (w(x) + w(y)) >= 0.5``, i.e. when ``w(x) >= w(y)`` — when the
+    *shared* word is at least as informative as the *distinguishing* one. A
+    corpus-wide vocative shared between two otherwise-different questions is the
+    *less* informative word, so the merge is refused; a rare topical word shared
+    between a question and its paraphrase is the *more* informative word, so the
+    merge holds. This is the precise distinction session 007 proved no
+    fingerprint-*size* guard could ever make — size can't tell ``{not}`` from
+    ``{recursion}``, but document frequency can. See JOURNAL.md.
+    """
+    questions = list(questions)
+    n = len(questions)
+    df = document_frequencies(questions)
+    return {w: 1.0 + math.log((1 + n) / (1 + d)) for w, d in df.items()}
+
+
+def similarity(a: str, b: str, importance: "Mapping[str, float] | None" = None) -> float:
+    """Overlap of two questions' content words, in ``[0.0, 1.0]``.
+
+    With ``importance`` ``None`` this is plain Jaccard: ``|A ∩ B| / |A ∪ B|`` —
+    ``1.0`` means identical fingerprints, ``0.0`` means no shared topical word.
+    Given an ``importance`` map (word -> weight, as from ``importance_weights``)
+    it is a *weighted* Jaccard: each word counts for its weight, so corpus-wide
+    boilerplate contributes little and rare topical words dominate. Words absent
+    from the map default to weight 1.0.
+
     Two questions with no content words at all are treated as dissimilar (0.0) —
     an empty fingerprint carries no evidence that they're the same node.
     """
     fa, fb = content_words(a), content_words(b)
     if not fa or not fb:
         return 0.0
-    return len(fa & fb) / len(fa | fb)
+    inter, union = fa & fb, fa | fb
+    if importance is None:
+        return len(inter) / len(union)
+    num = sum(importance.get(w, 1.0) for w in inter)
+    den = sum(importance.get(w, 1.0) for w in union)
+    return num / den if den else 0.0
 
 
 class Clustering:
@@ -199,8 +261,16 @@ def cluster_questions(
     ``threshold`` are merged; each cluster's representative is its most frequent
     phrasing, ties broken toward the shortest then lexically smallest — a stable,
     corpus-order-independent choice.
+
+    Similarity is *document-frequency weighted* (see ``importance_weights``):
+    words that pervade the corpus count for little, so a shared vocative or a
+    genre's filler can't act as a merge hub. The weights are learned from this
+    corpus's own questions, keeping the measure order-independent — and it means
+    the merge decision is contextual: the same two questions can merge in a
+    corpus where their shared word is rare and stay apart where it's boilerplate.
     """
     questions = sorted(weights)
+    importance = importance_weights(questions)
     uf = _UnionFind(questions)
 
     # O(n^2) pairwise comparison. Honest and fine for the corpus sizes we map
@@ -208,7 +278,7 @@ def cluster_questions(
     # optimization (only questions sharing a content word can possibly match).
     for i, a in enumerate(questions):
         for b in questions[i + 1 :]:
-            if similarity(a, b) >= threshold:
+            if similarity(a, b, importance) >= threshold:
                 uf.union(a, b)
 
     clusters: "collections.defaultdict[str, list]" = collections.defaultdict(list)
