@@ -1,3 +1,4 @@
+import collections
 import unittest
 
 from cartographer.loops import (
@@ -61,6 +62,46 @@ class TestClassifyPath(unittest.TestCase):
         self.assertEqual(shape.revisited_nodes, ("a", "b"))
 
 
+class TestLoopLength(unittest.TestCase):
+    def test_no_revisits_has_no_lengths(self):
+        shape = classify_path(["a", "b", "c"])
+        self.assertEqual(shape.loop_lengths, ())
+        self.assertEqual(shape.widest_loop, 0)
+
+    def test_immediate_reask_has_length_one(self):
+        # The same node two turns running is a tight self-circle.
+        shape = classify_path(["a", "a"])
+        self.assertEqual(shape.loop_lengths, (1,))
+        self.assertEqual(shape.widest_loop, 1)
+
+    def test_return_after_a_detour_has_span_of_the_circle(self):
+        # a -> b -> a: came back after one intervening node, a circle of 2 steps.
+        shape = classify_path(["a", "b", "a"])
+        self.assertEqual(shape.loop_lengths, (2,))
+        self.assertEqual(shape.widest_loop, 2)
+
+    def test_length_measured_from_previous_visit_not_first(self):
+        # a touched at 0, 2, 4. Each return closes a 2-step circle; the length
+        # must not grow to 4 by measuring back to the first visit.
+        shape = classify_path(["a", "b", "a", "c", "a"])
+        self.assertEqual(shape.loop_lengths, (2, 2))
+        self.assertEqual(shape.widest_loop, 2)
+
+    def test_lengths_align_with_revisits(self):
+        # Two different nodes returned to at different spans; order preserved.
+        shape = classify_path(["a", "b", "b", "a"])
+        # b re-asked immediately at 2 (span 1); a returned at 3 (span 3).
+        self.assertEqual(shape.revisits, ((2, "b"), (3, "a")))
+        self.assertEqual(shape.loop_lengths, (1, 3))
+        self.assertEqual(len(shape.loop_lengths), len(shape.revisits))
+        self.assertEqual(shape.widest_loop, 3)
+
+    def test_monad_shape_is_an_immediate_reask(self):
+        # The real sample-corpus loop: re-asked the same question, then moved on.
+        shape = classify_path(["monad", "monad", "burrito"])
+        self.assertEqual(shape.loop_lengths, (1,))
+
+
 class TestShapeGraph(unittest.TestCase):
     def test_counts_outcomes_across_paths(self):
         graph = build_graph(
@@ -89,6 +130,20 @@ class TestShapeGraph(unittest.TestCase):
         report = shape_graph(build_graph([]))
         self.assertEqual(report.loop_rate, 0.0)
         self.assertEqual(report.shapes, [])
+        self.assertEqual(report.loop_lengths, collections.Counter())
+        self.assertEqual(report.immediate_reask_rate, 0.0)
+
+    def test_loop_lengths_tally_across_the_corpus(self):
+        graph = build_graph(
+            [
+                {"turns": ["What is a?", "What is a?"]},  # length-1 re-ask
+                {"turns": ["What is a?", "What is b?", "What is a?"]},  # length-2
+            ]
+        )
+        report = shape_graph(graph)
+        self.assertEqual(report.loop_lengths, collections.Counter({1: 1, 2: 1}))
+        # One of the two circles was an immediate re-ask.
+        self.assertEqual(report.immediate_reask_rate, 0.5)
 
     def test_clustering_makes_a_loop_visible_that_was_hidden(self):
         # Two phrasings of one question, re-asked. Unclustered they are two
