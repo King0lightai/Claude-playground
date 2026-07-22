@@ -34,8 +34,9 @@ python -m unittest discover -s tests           # run the tests
 | --- | --- |
 | `cartographer/extract.py` | Pulls questions/intents out of raw text (the atom) |
 | `cartographer/corpus.py` | Loads a JSONL corpus of conversations |
+| `cartographer/ingest/` | Turns real sources into the corpus format (Gutenberg dialogues, ConvoKit/Reddit threads) |
 | `run.py` | CLI: map the questions in a corpus |
-| `examples/` | A tiny sample corpus so it does something on clone |
+| `examples/` | Sample + real corpora so it does something on clone |
 | `tests/` | Standard-library `unittest` tests |
 | `CLAUDE.md` | The project's charter — read first |
 | `JOURNAL.md` | The running log of decisions and direction |
@@ -48,6 +49,18 @@ One JSON object per line (JSONL):
 {"id": "c1", "turns": ["first message", "second message"]}
 {"id": "c2", "text": "a single blob of conversation text"}
 ```
+
+## Corpora
+
+| Corpus | What it is |
+| --- | --- |
+| `examples/sample_corpus.jsonl` | A tiny handmade sample so `run.py` does something on clone |
+| `examples/socratic_dialogues.jsonl` | Plato's *Meno* and *Euthyphro* (public domain), rebuilt from `examples/gutenberg/` |
+| `examples/cmv_sample.jsonl` | Reddit r/ChangeMyView threads with **delta** (view-changed) ground-truth labels, rebuilt from `examples/convokit/` — see its `PROVENANCE.md` |
+
+The CMV corpus is the first with an external answer key: each path is labeled
+`delta: true/false` (did this line of argument change the poster's view?), so the
+instrument's loop-vs-resolve reading can finally be graded against reality.
 
 ## Provenance
 
