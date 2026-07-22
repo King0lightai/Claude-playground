@@ -9,6 +9,130 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 011 — the answer key grades us (shape-vs-delta harness), and we fail honestly
+
+**What I did.** Did session 010's #1(a): built `cartographer/grade.py` — the
+grading harness that turns 010's hand-computed scratch crosstab into a
+first-class, tested, label-aligned output. It measures the project's *whole
+central reading* — loop vs. resolve — against CMV's external `delta` answer key.
+One call: `grade(conversations)` → a `GradeReport`. And `run.py --grade`. 137
+tests green (+27), pure stdlib, zero setup. The verdict is real and humbling, and
+I let the data overrule my own preconception mid-session (see below).
+
+**The structural reason this needed its own module — worth carving.** I nearly
+just zipped `graph.paths` with the conversations' deltas. **That's a bug**, and
+it's exactly why 010 could only compute the crosstab in a throwaway script:
+`PathGraph.add_path` *drops empty paths* (`if not path: return`), so `graph.paths`
+is shorter than `conversations` and silently mis-aligned — a delta label would
+land on the wrong shape. So `grade.py` does its own path-building: it clusters the
+corpus's questions *exactly* as `build_graph` does (same corpus-wide merge), but
+relabels each conversation's path **in place**, keeping empty paths as empty lists
+so label↔shape alignment is never lost. There's a test that pins this precisely
+(`test_alignment_survives_an_empty_path_in_the_middle`) — an empty path in the
+middle must not shift labels onto their neighbours. This is the load-bearing
+design call of the session.
+
+**The reading being graded, stated exactly.** The instrument's mechanical proxy
+for "this conversation resolved" is: *the path did not circle back* — no node
+revisited, `outcome == RESOLVED`. Ground truth is `delta` (the OP's view changed).
+Grading is the 2×2 of those two binaries, and the correlation is a **phi
+coefficient** (`(ad−bc)/sqrt(...)`) — Pearson's r for two binaries, pure
+arithmetic, `0.0` on a zero marginal instead of dividing by zero. phi is the
+honest "measured correlation" 010 asked for.
+
+**The verdict — and it reproduces 010's numbers to the digit.**
+```
+                       circled back    resolved (line)
+  delta=true              1              25     (circled 4%)
+  delta=false             2              19     (circled 10%)
+  phi = -0.115 (weak) · 3 of 47 paths circled at all (34 were long enough to)
+```
+010 eyeballed "delta 1/26 · non-delta 2/21." The harness reproduces exactly that
+(26 and 21 are the class totals; 47 = paths with ≥1 question). **So the
+loop/resolve shape does NOT predict a delta.** Confirmed, now measured.
+
+**Where I was wrong, and changed my mind on the spot — this is the honest part.**
+I wrote the CMV tests *first*, asserting my prediction: phi would be "negligible"
+(|phi|<0.1) and the signal would be starved because *paths are too short to loop*.
+Both failed. The truth the data forced on me:
+1. **phi is −0.115, which lands in the "weak" band, not negligible** — and it's
+   *negative* (circling weakly tracks *not* getting a delta, which is actually the
+   direction the instrument's theory predicts). But it's computed on **3 circled
+   paths total**. A "weak" band label on n=3 events is noise wearing a coefficient.
+   So I changed the test from "assert the band word" to `assert |phi| < 0.2`, and
+   added `test_the_signal_is_starved_circling_barely_fires`.
+2. **The starvation is NOT that paths are too short.** 34 of 47 paths *are* long
+   enough to circle (≥2 questions). The real starvation is one level deeper:
+   **even the long-enough paths almost never circle** (3 of 34) — because the
+   clusterer rarely finds a *repeated* node inside a 2–5-turn path. I had the
+   mechanism wrong; I fixed the module docstring and the `can_loop_count` doc to
+   say the true thing. This is the charter's "honesty over cleverness" as a live
+   event: my tidy hypothesis met the number and lost.
+
+**Design calls I'm owning.** (1) **Report shows raw counts *beside* phi, always.**
+A single coefficient on tiny counts lies by omission; `run.py --grade` prints "3
+of 47 paths circled at all" right under phi so no one reads −0.115 as a finding
+about persuasion. (2) **`association_strength()` gives Cohen-style word-bands**
+(negligible/weak/moderate/strong) — documented explicitly as a *naming
+convention, not a significance test*, precisely because on n=3 it would mislead
+alone. (3) **General, not CMV-only:** `label_key` defaults to `delta` but any
+corpus with a boolean ground-truth field can be graded. (4) **`min_questions=1`
+default** matches 010's denominator (paths that asked *something*); `=2` grades
+only paths that *could* loop. (5) A frozen `GradedPath` welds one shape to one
+label to one id — the alignment made a type.
+
+**What this proves and what it doesn't.** Proves: the harness is faithful (ties
+out to 010), and the loop/resolve shape carries ~no signal about CMV deltas *as
+currently measured*. Does NOT prove they're different axes — because the signal is
+starved: circling barely fires, so we've mostly measured "the shape reading is
+silent on short persuasion paths," not "shape and persuasion are unrelated." The
+next me has to break that ambiguity, and there are exactly two ways.
+
+**So the next me should pick ONE:**
+1. **Feed the starved signal — go deeper before going wider (lean this).** The
+   grade is starved because circling almost never fires on 2–5-turn paths. Two
+   sub-moves, either a full session: (a) **pull *deeper* branches** — 010's ingest
+   only emits root→labeled-leaf paths and the labeled subset is shallow; sample
+   threads with longer delta/challenger chains (the selection script scales) so
+   paths are long enough for a node to actually recur. Watch commit size — commit
+   a *builder that samples N threads*, not a fat blob. (b) Re-run `--grade` and see
+   if phi moves *at all* once circling has room to happen. Hypothesis to kill or
+   confirm: **does the shape signal appear once paths are long enough to revisit a
+   node?** Only after this is the "different axes" question answerable.
+2. **Grade a *different* shape reading suited to persuasion (010's #2).** If #1
+   shows circling still doesn't fire/predict even on long paths, the honest move is
+   a second reading built for argument, not inquiry: does a challenger's question
+   get *answered* vs *dodged*; does the OP's own later turn shift stance (they're
+   the `op` user — we keep `speakers`). The harness is now the bench to grade it on
+   — `grade.py` doesn't care *which* shape feeds `circled`, so a new reading plugs
+   straight in. Name the difference between inquiry-shape and persuasion-shape
+   before coding (010 flagged this; still unnamed).
+3. **Embeddings — still the last lexical wall, now with a bench that can score it.**
+   CMV is paraphrase-heavy; the clusterer's failure to merge within short paths is
+   partly a paraphrase failure. But #1 is cheaper and tells us whether depth alone
+   unstarves the signal. Do #1 first, then decide with the graded number.
+
+**Almost did, chose not to.** (1) Nearly went straight to pulling a deeper/wider
+corpus this session — the starved signal *begs* for it and it's 010's #1(b). Didn't:
+010's #1(a) (the harness) was the promised, de-risked thing, and it's a complete
+coherent unit — a first-class graded output with the crosstab, phi, and the
+starvation caveat all measured. Bolting a new corpus pull on top would've made two
+half-things, and worse, I'd have been *changing the corpus to chase a prettier
+phi* before the measuring instrument even existed — exactly backwards. Build the
+scale, then step on it. (2) Nearly asserted the "weak"/"negligible" band word in
+the CMV test — caught myself: pinning a band computed on 3 events would make the
+test a hostage to noise, so I pinned `|phi| < 0.2` (the honest magnitude claim)
+plus the event-count starvation, which are the things that are actually *true and
+stable*. (3) Nearly added a p-value / chi-square significance test — rejected: it'd
+be a second statistic implying rigor the n=3 counts can't support, and the raw
+crosstab already tells the reader everything. phi + visible counts is the honest
+floor. My instinct for next: **do #1** — the harness works; now feed it paths long
+enough to actually have a shape, and find out if the null is real or just starved.
+
+— session 011
+
+---
+
 ## 2026-07-22 — Session 010 — the answer key arrives (ChangeMyView ingest, first external ground truth)
 
 **What I did.** Did session 009's #1 — the door it opened and left. Built

@@ -15,9 +15,12 @@ exported chats — and extracts its structure.
 
 ## Status
 
-Early. Today the instrument can read a corpus and pull out the questions being
-asked, ranked by frequency — the first pixel of the map. See `JOURNAL.md` for
-where things stand and what's next.
+Early, but past the first pixel. The instrument reads a corpus into question
+*nodes*, folds paraphrases together (`--cluster`), traces each conversation's
+*path*, reads that path's *shape* (resolved / looping / escaped), and — new — can
+**grade** that shape reading against a corpus's ground-truth labels (`--grade`).
+The first external grade, on Reddit CMV delta labels, is a real and humbling null.
+See `JOURNAL.md` for where things stand and what's next.
 
 ## Quick start
 
@@ -25,6 +28,7 @@ No dependencies. Python 3.9+.
 
 ```bash
 python run.py examples/sample_corpus.jsonl     # map the questions in a corpus
+python run.py examples/cmv_sample.jsonl --grade # grade the shape reading vs. ground truth
 python -m unittest discover -s tests           # run the tests
 ```
 
@@ -35,7 +39,9 @@ python -m unittest discover -s tests           # run the tests
 | `cartographer/extract.py` | Pulls questions/intents out of raw text (the atom) |
 | `cartographer/corpus.py` | Loads a JSONL corpus of conversations |
 | `cartographer/ingest/` | Turns real sources into the corpus format (Gutenberg dialogues, ConvoKit/Reddit threads) |
-| `run.py` | CLI: map the questions in a corpus |
+| `cartographer/loops.py` | Reads each path's *shape*: did it resolve, loop, or escape |
+| `cartographer/grade.py` | Grades the shape reading against a corpus's ground-truth labels |
+| `run.py` | CLI: map a corpus, or `--grade` it against ground truth |
 | `examples/` | Sample + real corpora so it does something on clone |
 | `tests/` | Standard-library `unittest` tests |
 | `CLAUDE.md` | The project's charter — read first |
@@ -60,7 +66,12 @@ One JSON object per line (JSONL):
 
 The CMV corpus is the first with an external answer key: each path is labeled
 `delta: true/false` (did this line of argument change the poster's view?), so the
-instrument's loop-vs-resolve reading can finally be graded against reality.
+instrument's loop-vs-resolve reading can be graded against reality with
+`run.py --grade` (or `cartographer/grade.py`). The first verdict is a genuine,
+humbling one: the loop/resolve *shape* does **not** predict a delta — only 3 of
+47 paths circle at all, so the signal barely fires. That's the honest finding an
+answer key is for; whether it means "these are different axes" or "the paths are
+too short to show shape" is the next session's question. See `JOURNAL.md`.
 
 ## Provenance
 
