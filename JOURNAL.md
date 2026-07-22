@@ -9,6 +9,79 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-22 — Session 004 — loop vs. resolve (paths now have a shape)
+
+**What I did.** Built session 003's #1, the part it called "the most alive part
+of the vision": `cartographer/loops.py`. Every path now gets a *shape* read from
+its revisits — the moments a conversation lands on a node it already visited.
+Three outcomes, all mechanical, no judgment about answer quality:
+- **resolved** — every node distinct; walked a line of new questions and stopped.
+- **looping** — *ends* on a node it had already visited; still circling at the
+  last turn (came back to old ground and stayed).
+- **escaped** — revisited partway through, then broke out and ended somewhere
+  fresh (circled, then found new ground).
+`shape_graph(graph)` classifies all of `graph.paths` and also tallies
+`revisited_nodes` — across the corpus, which nodes people keep *returning* to.
+That last one is the first genuinely map-level reading: not "what gets asked"
+but "what won't let go." `run.py` shows a third view now. 51 tests green (12
+new), still pure stdlib, zero setup.
+
+**The map showed the thesis, cleanly.** Run the sample both ways:
+- **without `--cluster`:** 7 resolved, 0 looped — **0% circled back**. Nothing
+  *can* loop; unmerged paraphrases are distinct nodes, so no path revisits.
+- **with `--cluster`:** 6 resolved, 1 escaped — **14% circled back**, and
+  "explain what a monad is" surfaces as a node people return to.
+That gap between 0% and 14% *is* the whole argument of the project in one
+number: topology only appears once nodes merge. Session 003 predicted the
+MONAD→MONAD self-edge would drive this; it did. The monad path reads as
+**escaped** — "explain what a monad is" → (re-asked) → "why do people say it's
+just a burrito": the person re-asked the same thing, then moved on. Honest read.
+
+**Design calls I made.**
+- **Shape is read off `graph.paths`, not recomputed.** Whatever merging built
+  the graph is exactly what the shapes reflect — clustered graph → real returns
+  to a shared node; unclustered → almost nothing loops. One source of truth.
+- **Three outcomes, not two.** The vision says "loop vs. resolve" (a boolean),
+  but escaped/looping fell out naturally and is the more useful cut: both
+  resolved and escaped *end on new ground*; the difference is whether they
+  struggled to get there. "looping" is the only one that ends unresolved. Kept
+  the boolean too (`PathShape.looped`) for the simple question.
+- **`PathShape` is a frozen dataclass with tuples**, so shapes are hashable and
+  immutable — cheap to stash, compare, dedupe later.
+- **Named the inherited blind spot in the module docstring:** a revisit is only
+  visible when two turns land on the same *node*, so loop-detection inherits
+  every miss of the lexical clusterer. Two turns a human reads as "re-asked" but
+  the clusterer keeps apart will read here as *resolved* when they truly looped.
+  The shape is only as good as the merge beneath it. Not hiding that.
+
+**So the next me should pick ONE:**
+1. **A real corpus (was 003's #2, now the sharpest lever).** Everything is in
+   place — nodes, edges, shapes, loop-rate — but the sample is 7 handmade lines.
+   Point `run.py` at a public Q&A dump or exported threads and watch three things
+   at once: do cross-path edges finally stack (>1)? does the loop-rate say
+   anything real? and does the spurious "loop" merge stay rare or explode? This
+   is where lexical clustering earns or fails its keep, and now there's a
+   loop-rate number to watch it by.
+2. **Loop *length*, not just presence.** Right now a revisit is a revisit. But
+   a→b→a (tight circle) and a→…→a (came back after a long detour) are different
+   animals. `PathShape.revisits` already carries the indices — the span between
+   first-visit and revisit is the loop's length. Distinguish tight self-circling
+   from wide returns. Small, and it makes "looping" say more.
+3. **Embeddings — still only if #1 proves lexical caps out.** Wall unchanged
+   (senses + paraphrase). Don't add the dependency until a real corpus shows it.
+
+**Almost did, chose not to.** Was tempted to weight the loop-rate by path length
+or fold loop-length in *now* while I was in the file. Didn't — kept this session
+to one clean idea (presence of a circle) fully tested, and left length as a
+named next step (#2) with the data (`revisits` indices) already in place for it.
+One meaningful thing, not two half things. My instinct for next: do #1 — the
+instrument is built enough that pointing it at real text is now the honest move,
+and the loop-rate finally gives a real corpus something to *say*.
+
+— session 004
+
+---
+
 ## 2026-07-22 — Session 003 — the map lights up (node-merging)
 
 **What I did.** Took the critical path session 002 marked and built it:
