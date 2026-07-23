@@ -84,8 +84,8 @@ class GradedPath:
         return len(self.shape.path) >= 2
 
 
-def _relabel_paths(
-    conversations: "list[dict]", threshold: float
+def relabel_paths(
+    conversations: "list[dict]", threshold: float = DEFAULT_THRESHOLD
 ) -> "list[list[str]]":
     """Cluster the corpus's questions and relabel each conversation's path.
 
@@ -94,11 +94,19 @@ def _relabel_paths(
     representatives — but returns one path per conversation *in order*, keeping
     empty paths as empty lists so alignment with the source conversations (and
     thus their labels) is never lost.
+
+    Public because it is the single source of truth for alignment-preserving
+    relabeling: :mod:`cartographer.readings` builds its bench on exactly these
+    paths, so every reading is graded against the same merge grading uses.
     """
     raw_paths = [conversation_path(c) for c in conversations]
     counts = collections.Counter(q for path in raw_paths for q in path)
     clustering = cluster_questions(counts, threshold)
     return [[clustering.label(q) for q in path] for path in raw_paths]
+
+
+# Back-compat alias for the pre-session-012 private name.
+_relabel_paths = relabel_paths
 
 
 def grade_paths(
@@ -121,7 +129,7 @@ def grade_paths(
     *could* circle.
     """
     labeled = [c for c in conversations if isinstance(c.get(label_key), bool)]
-    paths = _relabel_paths(labeled, threshold)
+    paths = relabel_paths(labeled, threshold)
     graded: "list[GradedPath]" = []
     for conversation, path in zip(labeled, paths):
         if len(path) < min_questions:
@@ -285,4 +293,5 @@ __all__ = [
     "grade",
     "grade_paths",
     "phi_coefficient",
+    "relabel_paths",
 ]
