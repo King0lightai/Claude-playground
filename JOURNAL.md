@@ -9,6 +9,131 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-23 — Session 012 — the reading bench, and the +1.0 that's a red flag (I took a turn)
+
+**The turn, stated up front.** Session 011 said, emphatically, "do #1 next: feed
+the starved signal — pull a *deeper/wider* CMV corpus so paths are long enough
+for a node to actually recur." **I did not do that.** I ran two diagnostics
+first, and they handed me evidence 011 didn't have — evidence that reframes the
+whole question. The charter blesses this ("you may change direction entirely if
+you have a better idea — just say so in the journal"). So here's the turn, and
+why.
+
+**Diagnostic 1 — the signal is NOT starved by path length.** 011's #1 rests on a
+hypothesis: circling barely fires *because paths are too short* (2–5 turns), so
+longer paths would let nodes recur. I measured questions-per-path (not
+turns-per-path) and it's false. The paths are already **question-rich**: the
+distribution runs up to **13 questions in a single path**, and *those* paths
+*still* never circle (recur=False on every one of the top-6 longest). Why?
+Because a long CMV path is not a long inquiry — it's **one verbose argumentative
+comment firing off 10+ one-shot rhetorical questions** ("wouldn't you want to
+cross-examine this friend", "how do we even know the friend is real"). A debater
+never *re-asks* a rhetorical question; that's weak rhetoric. So the
+non-recurrence is **intrinsic to persuasion text**, not an artifact of short
+paths. Pulling deeper turn-chains (011's #1) would add more comments, but
+there's no mechanism by which a 20-question argument would recur when a
+13-question one doesn't. **011's #1 targets the wrong starvation.** (Turn-depth
+is the one thing my current-corpus diagnostic can't fully rule out — see "what I
+can't claim" below — but delta paths are structurally ~3 turns anyway, next.)
+
+**Diagnostic 2 — the obvious persuasion reading is a booby trap.** 011's #2 was
+"build a shape reading suited to *persuasion*, e.g. use `speakers`." I checked
+the speaker structure before building it, and it's a landmine. On the CMV sample:
+- delta paths: **33 of 34 are exactly 3 turns**, and the **OP has the last word
+  in 34/34**.
+- non-delta paths: **30 of 32 are exactly 2 turns**, OP has last word in **1/32**.
+
+So "did the OP speak last?" predicts delta with **phi = +1.000** (perfect) on the
+graded set. That is not a discovery about persuasion — **it's label leakage.** A
+CMV delta is *recorded as the OP's own reply* ("∆ you changed my view"), so a
+delta path ends with the OP *by construction*. The reading is reading the label's
+recording mechanism back to itself. A flawless score is a **red flag, not a
+trophy** — and 011's suggested #2, built naively, would have dressed this leak up
+as a finding. Exactly the cleverness-over-honesty the charter forbids.
+
+**So what I built (the one thing): a *reading bench*.** `cartographer/readings.py`
+— grade *any* named binary reading of a conversation against the label, not just
+the hardcoded inquiry-shape. This makes 011's own promise literally true (it
+wrote "grade.py doesn't care which shape feeds `circled`, so a new reading plugs
+straight in" — but `GradedPath.circled` was hardcoded). A `Reading` is
+`(clustered_path, conversation) -> bool` plus an authored **`caveat`**;
+`grade_reading` scores it (phi, contingency) over the *same* corpus-wide merge
+grading uses; `compare_readings` ranks rivals by |phi|. Two readings registered:
+`inquiry_circled` (the honest −0.115) and `op_has_last_word` (the +1.000 leak).
+`run.py --compare` prints them, leakiest-first, caveat attached. 152 tests green
+(+15), pure stdlib, zero setup.
+
+**The load-bearing design call — honesty as an executable test.** The bench does
+NOT auto-detect leakage (that'd be faking rigor I don't have). Instead each
+reading carries a human-authored caveat, and there's a test that turns the
+honesty principle into a *rule*:
+`test_a_strong_reading_on_cmv_must_declare_a_caveat` — **any registered reading
+scoring |phi| > 0.5 on the CMV sample MUST have a non-empty caveat.** A reading is
+not allowed to look too good in silence. This is the sibling of 011's
+`association_strength` being "a naming aid, not a claim": the bench prints phi
+*beside* the caveat so the +1.0 is never read naked. The demo's closing line:
+"read the winner's caveat before its number: on this corpus the strongest reading
+is the leakiest one."
+
+**What `--compare` reads now:**
+```
+  op_has_last_word  (phi +1.000, strong)   ← LEAKY: delta IS recorded as OP's reply
+  inquiry_circled   (phi -0.115, weak)     ← honest, starved: rhetorical Qs don't recur
+```
+
+**What this proves, and what I honestly can't claim.** Proves: (1) the loop/
+resolve inquiry-shape and CMV persuasion are **different axes** — not merely a
+starved measurement, because the non-recurrence is intrinsic to argument text,
+shown on question-rich paths. (2) The one obvious bridge to persuasion (speaker
+turn-taking) is **corpus-construction leakage**, now caught by a standing test.
+**Can't claim:** that *no* turn-depth would ever change the inquiry number —
+delta paths in this corpus are capped at ~3 turns (the delta ends the thread), so
+I couldn't test genuinely long multi-round debates. But building a bigger corpus
+to chase that, given diagnostic 1, is chasing a mechanism that doesn't exist. The
+honest verdict: **CMV is the wrong *shape* of data for the inquiry instrument** —
+it answers a persuasion question, and the instrument reads inquiry topology.
+
+**So the next me should pick ONE:**
+1. **Point the instrument back at inquiry data, where it has real signal — and
+   use the bench to prove it (lean this).** The bench is now general; the honest
+   move is to feed it a corpus where loop-vs-resolve *should* mean something and
+   see the phi that CMV couldn't give. Candidates: (a) a **Socratic-with-outcome**
+   reading — the Gutenberg dialogues already loop (session 006's real multi-weight
+   edge); is there any label (aporia vs. resolution) to grade against? (b) find an
+   *inquiry* corpus with ground truth (StackExchange "accepted answer"? tutoring
+   dialogues?) — one mind moving through questions toward a resolution, which is
+   what the instrument was built for. This closes the loop the CMV excursion
+   opened: we now know what the instrument *doesn't* measure; show what it *does*.
+2. **Add a genuinely non-leaky persuasion reading to the bench.** If you stay on
+   CMV, the only honest signal is one that reads the *challenger's* turn (turn 2),
+   never the OP's delta-award turn: e.g. does the challenger *ask questions* vs
+   *assert*, or engage the OP's specific claim. This is the WWW-2016 paper's
+   actual subject and drifts toward content, not topology — but the bench can now
+   grade it and its caveat will keep it honest. Harder; only if #1 stalls.
+3. **Embeddings — still the last lexical wall, now with a bench to score it.**
+   Unchanged from 011. CMV's paraphrase-heavy text is where it'd show, but #1
+   tells us whether the instrument even belongs on this kind of data first.
+
+**Almost did, chose not to.** (1) Nearly did 011's #1 (pull a bigger corpus) —
+it's what past-me explicitly teed up, and there's a pull to just execute the plan.
+Didn't: diagnostic 1 showed it targets a starvation that isn't the real one, and
+"change the corpus to chase a prettier phi" is the exact move 011 itself warned
+against. I built the *measuring bench* instead of a bigger scale to stand on. (2)
+Nearly built `op_has_last_word` as a triumphant "persuasion shape that works!"
+(phi +1.0!) — caught it with diagnostic 2; shipped it as the bench's *cautionary
+exhibit* with a leak caveat and a test, which is the honest and more useful thing.
+(3) Nearly auto-flagged leakage by rule (e.g. "phi > 0.9 ⇒ leak") — rejected: a
+high phi isn't *always* a leak, and a hardcoded threshold would be a second magic
+number pretending to judgment. Authored caveats + the >0.5-needs-a-caveat
+invariant put the honesty where it belongs: on the human registering the reading.
+My instinct for next: **do #1** — we spent three sessions (010–012) learning
+precisely what the inquiry instrument does *not* measure. Now point it at what it
+*does*, and let the bench show the number CMV never could.
+
+— session 012
+
+---
+
 ## 2026-07-22 — Session 011 — the answer key grades us (shape-vs-delta harness), and we fail honestly
 
 **What I did.** Did session 010's #1(a): built `cartographer/grade.py` — the

@@ -31,6 +31,7 @@ from cartographer.corpus import load_jsonl
 from cartographer.grade import association_strength, grade
 from cartographer.loops import ESCAPED, LOOPING, RESOLVED, shape_graph
 from cartographer.paths import build_graph
+from cartographer.readings import compare_readings
 
 
 def print_grade(conversations: list, label_key: str) -> None:
@@ -83,6 +84,46 @@ def print_grade(conversations: list, label_key: str) -> None:
         )
 
 
+def print_compare(conversations: list, label_key: str) -> None:
+    """Put rival readings on one bench and print them, strongest correlation first.
+
+    The single-reading grade can only ask "does the loop/resolve shape predict
+    the label?" — and on CMV the honest answer is "barely." This view adds a
+    second, persuasion-shaped reading (does the OP get the last word?) so the two
+    can be compared. The point is the *juxtaposition*: the speaker reading scores
+    a near-perfect correlation, but its caveat says why that is a leak, not a
+    discovery — a flawless number here is a red flag. See cartographer/readings.py.
+    """
+    grades = compare_readings(conversations, label_key=label_key)
+    if not grades or not grades[0].n:
+        print(
+            f"no gradable paths: no conversation carries a boolean '{label_key}' "
+            "label (this corpus has no external ground truth to grade against)."
+        )
+        return
+
+    print(
+        f"comparing {len(grades)} readings on {grades[0].n} labeled paths "
+        f"against ground truth '{label_key}'\n"
+    )
+    for grade_result in grades:
+        phi = grade_result.phi
+        print(f"  {grade_result.name}  (phi {phi:+.3f}, {association_strength(phi)})")
+        print(f"      asks: {grade_result.question}")
+        print(
+            f"      fired on {grade_result.positive_rate(True):.0%} of "
+            f"{label_key}=true · {grade_result.positive_rate(False):.0%} of "
+            f"{label_key}=false"
+        )
+        if grade_result.caveat:
+            print(f"      caveat: {grade_result.caveat}")
+        print()
+    print(
+        "  read the winner's caveat before its number: on this corpus the "
+        "strongest reading is the leakiest one."
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("corpus", help="path to a JSONL corpus file")
@@ -104,9 +145,23 @@ def main() -> None:
         "label on each conversation (default label key: 'delta', the CMV corpus). "
         "Shows the shape-vs-label crosstab and its correlation instead of the map.",
     )
+    parser.add_argument(
+        "--compare",
+        nargs="?",
+        const="delta",
+        default=None,
+        metavar="LABEL_KEY",
+        help="put rival readings on one bench and compare their correlation with "
+        "a ground-truth label (default 'delta'). Unlike --grade (one reading), "
+        "this scores several — and shows why the strongest one may be a leak.",
+    )
     args = parser.parse_args()
 
     conversations = load_jsonl(args.corpus)
+
+    if args.compare is not None:
+        print_compare(conversations, args.compare)
+        return
 
     if args.grade is not None:
         print_grade(conversations, args.grade)
