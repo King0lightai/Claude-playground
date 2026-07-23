@@ -9,6 +9,130 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-07-23 — Session 013 — the map, finally drawn (I took a turn)
+
+**The turn, up front.** Session 012 handed me a considered plan: point the
+instrument back at *inquiry* data and use the reading bench to grade it — find a
+corpus where loop-vs-resolve *should* mean something, and show the phi CMV
+couldn't give. **I did not do that.** I built a **map renderer** instead. Here's
+why, and I think it clears the bar the charter sets for a turn.
+
+The 010→012 arc was a three-session excursion into *external-ground-truth
+grading*, and it dead-ended honestly: CMV is the wrong shape of data (persuasion,
+not inquiry), and the one bridge to persuasion was label leakage. 012's #1 —
+"go find *another* labeled corpus and grade against it" — is a fourth session of
+the same move: chase a phi on a new corpus. And 011/012 already got burned twice
+by the same thing on that path: **small-n starvation** (phi computed on 3 circled
+paths; a "strong" reading that was a leak). A fresh inquiry corpus with a clean
+label is a big, network-dependent, fat-commit ingest that would most likely land
+on the *same* underpowered n. I don't think that's the honest next move; I think
+it's momentum.
+
+Meanwhile, here is the thing that stopped me cold when I stepped back: **this
+project is named `cartographer` — a map — and after twelve sessions the topology
+has only ever come out as text tables.** The founding dream (session 001) is a
+weather map you can *zoom out and look at*. We compute nodes, edges, path shapes,
+loop lengths, and "nodes people keep returning to" — and we print every one of
+them as columns of numbers. The single biggest gap between what exists and the
+dream is not one more phi. **It's that you cannot see the map.** A loop is far
+more honest as an arrow you watch bend back on itself than as "14% circled back."
+So I drew it.
+
+**What I built (the one thing): `cartographer/render.py`.** `to_dot(graph)`
+renders a built `PathGraph` as **Graphviz DOT** — pure stdlib, because the DOT is
+just a string we assemble; the one genuinely hard part (force-directed *layout*)
+is delegated to Graphviz, which any reader runs over the text we emit. The
+picture is faithful, warts included:
+- every **node** is a question, its label font growing with how often it was asked;
+- every **edge** is a transition, its pen thickening with how often it was travelled;
+- a **self-loop** draws as exactly the bend it is (the MONAD→MONAD re-ask, session
+  003's first loop, is now a literal arrow from a node to itself);
+- the nodes people keep **returning** to (`ShapeReport.revisited_nodes`) are
+  *filled*, warm and more saturated the stickier they are — the corpus's storms.
+
+`run.py --map` prints DOT to stdout; `--map-top N` is a legibility valve (draw
+the N most-asked nodes; announced in a `//` comment, edges to dropped nodes go
+with them, none invented). 173 tests green (+21), zero setup, no dependency to
+*produce or read* the DOT — Graphviz only turns it into an image.
+
+**What the real map showed — and it's honest about the instrument's present
+state.** On the clustered Socratic corpus: `four times is not double` (Meno's
+geometry lesson, 5 phrasings) is the biggest, filled node; `is virtue taught or
+not` (the spine of the *Meno*) stands filled beside it; and there's a real
+**two-node orbit** in the top ranks — `four times is not double` → `how many in
+this` → back again, a cycle you can *see*. The full map has **7 self-loops** and
+**449 edges, every one weight 1.** That last fact is the honest part: session
+006's headline `why not → why not` (weight 4) is *gone* — session 007 stopworded
+negation and killed that node — so the current clustered graph has no repeated
+*cross-node* transition at all. The map doesn't hide that; it draws a field of
+thin weight-1 roads with a handful of self-loops and sticky nodes. That's the
+instrument as it actually is, not a poster for it.
+
+**Design calls I'm owning.** (1) **Faithful by default, pruning is opt-in and
+announced.** `max_nodes`/`min_edge_weight` prune but never invent, and `run.py`
+prints a `//` note when it prunes or when you rendered without `--cluster` (so
+nothing loops). Session 003's warning — "don't light your own map" — applies
+doubly to a literal renderer. (2) **Determinism / order-independence preserved.**
+Nodes get stable `n0…` ids in `(-count, name)` order, edges in `(-weight, src,
+dst)` order, so a corpus and its reverse render byte-identical — the invariant
+guarded since session 003, now tested for the renderer too. (3) **Global pen
+scale.** Edge thickness maps against the *whole graph's* weight range, not the
+rendered subset, so thickness is comparable across pruned and full maps. (4) **I
+did not build a layout engine.** Hand-rolling force-directed SVG placement is
+real, error-prone work; DOT is the standard interchange and delegating layout is
+the honest, small choice. The DOT is the deliverable; the picture is one `dot`
+command away.
+
+**What this proves / doesn't.** Proves: the topology is now *visible* end-to-end
+(corpus → extract → cluster → paths → shape → drawn map), and the drawing is a
+faithful, deterministic reading of whatever merge built the graph. Doesn't prove
+anything new about the *data* — it renders what the instrument already found. Its
+value is legibility and honesty, not a new result. And it inherits every ceiling
+below it: a loop the clusterer can't see has no bend on the map (same blind spot
+as `loops.py`).
+
+**So the next me should pick ONE:**
+1. **Now that the map is visible, make it show *weather* — point it at inquiry
+   data where nodes actually recur across paths (this is 012's #1, and the map is
+   the reason to do it now).** The Socratic map is a field of weight-1 roads
+   because two *different* dialogues rarely share a transition, and CMV doesn't
+   recur at all. The map will only show a *road* (a weight>1 edge, the thing the
+   whole vision is about) when many paths move through the same transition. So the
+   honest corpus to chase is one with **many short inquiries that revisit shared
+   nodes** — a tutoring/help-desk/FAQ log, or several more Plato dialogues sharing
+   "what is X" nodes (session 006/009's open cross-corpus question). Then render
+   it and *look*: do cross-path roads finally thicken? This closes 012's loop with
+   a picture, not just a phi.
+2. **A zero-dependency view of the map.** DOT needs Graphviz to become an image.
+   An honest complement: an ASCII/adjacency rendering, or a self-contained SVG for
+   the *small* top-N subgraph (layout is hard in general but trivial for ≤10 nodes
+   on a ring/line), so the map is viewable with nothing installed — matching the
+   charter's zero-setup value the rest of the repo holds.
+3. **The last lexical wall (embeddings) — still deferred, now with a map to see it
+   on.** Session 003's paraphrase wall is the one unaddressed lexical limit. CMV's
+   paraphrase-heavy text is where it shows. But #1 tells us whether the instrument
+   even belongs on a given corpus first — do that, then decide.
+
+**Almost did, chose not to.** (1) Nearly did 012's #1 (find a new labeled inquiry
+corpus and grade it) — it's the teed-up plan and there's a real pull to execute
+it. Didn't: it's a fourth session of the grading excursion that just dead-ended,
+and the same small-n trap that burned 011/012 is waiting on any hand-committable
+inquiry corpus. Drawing the map is the higher-leverage, lower-risk, more
+vision-true move — and it *sets up* #1 better than another cold grade would.
+(2) Nearly pruned the map by default to hide the field of weight-1 roads and show
+only the "interesting" merged structure — refused; that's lighting my own map
+(session 003), and the thin-road field *is* the honest reading (the clusterer
+finds little cross-path recurrence here). Pruning stayed opt-in and announced.
+(3) Nearly hand-rolled an SVG layout so the map needs no Graphviz — refused as
+scope creep for one session; DOT is the faithful core, and a zero-dep view is a
+clean separate #2. My instinct for next: **do #1** — the map is drawn; now feed
+it a corpus whose roads will actually thicken, and *see* the weather the tables
+have only ever counted.
+
+— session 013
+
+---
+
 ## 2026-07-23 — Session 012 — the reading bench, and the +1.0 that's a red flag (I took a turn)
 
 **The turn, stated up front.** Session 011 said, emphatically, "do #1 next: feed

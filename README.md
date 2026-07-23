@@ -17,20 +17,29 @@ exported chats — and extracts its structure.
 
 Early, but past the first pixel. The instrument reads a corpus into question
 *nodes*, folds paraphrases together (`--cluster`), traces each conversation's
-*path*, reads that path's *shape* (resolved / looping / escaped), and — new — can
-**grade** that shape reading against a corpus's ground-truth labels (`--grade`).
-The first external grade, on Reddit CMV delta labels, is a real and humbling null.
-See `JOURNAL.md` for where things stand and what's next.
+*path*, reads that path's *shape* (resolved / looping / escaped), can **grade**
+that shape reading against a corpus's ground-truth labels (`--grade`), and — new
+— can **draw the map**: render the whole topology as a Graphviz picture
+(`--map`), where a loop is an arrow you watch bend back on itself instead of a
+line in a table. The first external grade, on Reddit CMV delta labels, is a real
+and humbling null. See `JOURNAL.md` for where things stand and what's next.
 
 ## Quick start
 
 No dependencies. Python 3.9+.
 
 ```bash
-python run.py examples/sample_corpus.jsonl     # map the questions in a corpus
-python run.py examples/cmv_sample.jsonl --grade # grade the shape reading vs. ground truth
-python -m unittest discover -s tests           # run the tests
+python run.py examples/sample_corpus.jsonl               # map the questions in a corpus
+python run.py examples/cmv_sample.jsonl --grade          # grade the shape reading vs. ground truth
+python run.py examples/socratic_dialogues.jsonl --cluster --map > meno.dot  # draw the topology
+python -m unittest discover -s tests                     # run the tests
 ```
+
+`--map` prints Graphviz DOT (just text — no dependency to produce or read). To
+turn it into a picture, run it through Graphviz: `dot -Tsvg meno.dot -o meno.svg`.
+Nodes grow with how often a question is asked, edges thicken with how often a
+transition is travelled, self-loops draw as bends, and the nodes people keep
+returning to are filled — the corpus's stickiest questions at a glance.
 
 ## Layout
 
@@ -41,7 +50,9 @@ python -m unittest discover -s tests           # run the tests
 | `cartographer/ingest/` | Turns real sources into the corpus format (Gutenberg dialogues, ConvoKit/Reddit threads) |
 | `cartographer/loops.py` | Reads each path's *shape*: did it resolve, loop, or escape |
 | `cartographer/grade.py` | Grades the shape reading against a corpus's ground-truth labels |
-| `run.py` | CLI: map a corpus, or `--grade` it against ground truth |
+| `cartographer/readings.py` | A bench for grading *rival* binary readings against ground truth (`--compare`) |
+| `cartographer/render.py` | Renders the topology as a Graphviz DOT map (`--map`) |
+| `run.py` | CLI: map a corpus (`--map`), `--grade` or `--compare` it against ground truth |
 | `examples/` | Sample + real corpora so it does something on clone |
 | `tests/` | Standard-library `unittest` tests |
 | `CLAUDE.md` | The project's charter — read first |

@@ -32,6 +32,7 @@ from cartographer.grade import association_strength, grade
 from cartographer.loops import ESCAPED, LOOPING, RESOLVED, shape_graph
 from cartographer.paths import build_graph
 from cartographer.readings import compare_readings
+from cartographer.render import to_dot
 
 
 def print_grade(conversations: list, label_key: str) -> None:
@@ -155,9 +156,39 @@ def main() -> None:
         "a ground-truth label (default 'delta'). Unlike --grade (one reading), "
         "this scores several — and shows why the strongest one may be a leak.",
     )
+    parser.add_argument(
+        "--map",
+        action="store_true",
+        help="render the topology as Graphviz DOT to stdout instead of the tables "
+        "— nodes sized by frequency, edges by weight, self-loops as bends, and the "
+        "nodes people keep returning to filled. Pair with --cluster (a map only "
+        "shows weather once paraphrases merge). Pipe to a file and run: "
+        "dot -Tsvg map.dot -o map.svg",
+    )
+    parser.add_argument(
+        "--map-top",
+        type=int,
+        default=None,
+        metavar="N",
+        help="with --map, draw only the N most-asked nodes (a legibility valve "
+        "for a big corpus). Announced in a DOT comment; edges among dropped nodes "
+        "go with them, none are invented.",
+    )
     args = parser.parse_args()
 
     conversations = load_jsonl(args.corpus)
+
+    if args.map:
+        graph = build_graph(conversations, cluster=args.cluster)
+        if graph.clustering is None:
+            print(
+                "// note: rendered without --cluster, so every phrasing is its "
+                "own node and nothing loops. Add --cluster to see the weather."
+            )
+        if args.map_top is not None:
+            print(f"// showing the {args.map_top} most-asked of {graph.node_count} nodes")
+        print(to_dot(graph, max_nodes=args.map_top), end="")
+        return
 
     if args.compare is not None:
         print_compare(conversations, args.compare)
