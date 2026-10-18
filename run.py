@@ -30,6 +30,7 @@ import argparse
 from cartographer.corpus import load_jsonl
 from cartographer.grade import association_strength, grade
 from cartographer.loops import ESCAPED, LOOPING, RESOLVED, shape_graph
+from cartographer.moves import build_move_graph, persistence, transition_lift
 from cartographer.paths import build_graph
 from cartographer.readings import compare_readings
 from cartographer.render import to_dot
@@ -125,6 +126,52 @@ def print_compare(conversations: list, label_key: str) -> None:
     )
 
 
+def print_moves(conversations: list, n: int) -> None:
+    """Re-read every question as the *kind* of move it makes, and read the order.
+
+    Content nodes rarely share a road across conversations; moves (define, cause,
+    confirm, suppose, ...) are a closed vocabulary, so they do. Shows the move mix,
+    the most-travelled move transitions with their lift over independence, and
+    the persistence test — whether askers stay on one move more than a shuffle of
+    their own paths would. Loop shapes are omitted: with eight nodes, long paths
+    revisit by pigeonhole. See cartographer/moves.py.
+    """
+    graph = build_move_graph(conversations)
+    total = sum(graph.nodes.values())
+    if not total:
+        print("no questions found: nothing to read moves from.")
+        return
+
+    print(f"{graph.path_count} paths · {total} questions read as moves\n")
+    print("move mix (what kind of question)")
+    for move, count in graph.nodes.most_common():
+        print(f"{count:4d}  {move:<8} {count / total:4.0%}")
+
+    print("\nmost-travelled move transitions (lift = observed / expected if independent)")
+    for item in transition_lift(graph)[:n]:
+        print(
+            f"{item.count:4d}  {item.src:>8} → {item.dst:<8} "
+            f"lift {item.lift:4.2f}  (expected {item.expected:.1f})"
+        )
+
+    print("\npersistence: do askers stay on one move more than chance?")
+    whole = persistence(graph.paths)
+    print(
+        f"     {whole.observed} of {whole.transitions} transitions repeat the move "
+        f"· shuffled paths average {whole.shuffled_mean:.1f}"
+        f" · ratio {whole.ratio:.2f} · p = {whole.p_value:.3f}"
+    )
+    local = persistence(graph.paths, window=10)
+    print(
+        f"     within 10-question windows: {local.observed} vs {local.shuffled_mean:.1f}"
+        f" · ratio {local.ratio:.2f} · p = {local.p_value:.3f}"
+    )
+    print(
+        "     (the shuffle keeps each path's mix of moves and destroys only order; "
+        "a diagonal lift above 1 that fails this test is just paths differing in mix.)"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("corpus", help="path to a JSONL corpus file")
@@ -174,9 +221,23 @@ def main() -> None:
         "for a big corpus). Announced in a DOT comment; edges among dropped nodes "
         "go with them, none are invented.",
     )
+    parser.add_argument(
+        "--moves",
+        action="store_true",
+        help="re-read each question as the kind of move it makes (define, cause, "
+        "method, fact, choose, suppose, confirm, propose) and show the move mix, "
+        "move transitions with lift, and a shuffle test of whether askers stay on "
+        "one move. A coarser layer where roads stack across conversations.",
+    )
     args = parser.parse_args()
+    if args.moves and (args.map or args.grade is not None or args.compare is not None):
+        parser.error("--moves is its own view; it doesn't combine with --map, --grade or --compare yet")
 
     conversations = load_jsonl(args.corpus)
+
+    if args.moves:
+        print_moves(conversations, args.n)
+        return
 
     if args.map:
         graph = build_graph(conversations, cluster=args.cluster)

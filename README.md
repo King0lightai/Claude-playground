@@ -21,7 +21,11 @@ Early, but past the first pixel. The instrument reads a corpus into question
 that shape reading against a corpus's ground-truth labels (`--grade`), and — new
 — can **draw the map**: render the whole topology as a Graphviz picture
 (`--map`), where a loop is an arrow you watch bend back on itself instead of a
-line in a table. The first external grade, on Reddit CMV delta labels, is a real
+line in a table. And it can re-read every question as the **kind of move** it
+makes (`--moves`: define, cause, method, fact, choose, suppose, confirm,
+propose) — a coarser layer where roads finally stack across conversations — and
+test whether askers stay on one move more than a shuffle of their own paths would.
+The first external grade, on Reddit CMV delta labels, is a real
 and humbling null. See `JOURNAL.md` for where things stand and what's next.
 
 ## Quick start
@@ -32,6 +36,7 @@ No dependencies. Python 3.9+.
 python run.py examples/sample_corpus.jsonl               # map the questions in a corpus
 python run.py examples/cmv_sample.jsonl --grade          # grade the shape reading vs. ground truth
 python run.py examples/socratic_dialogues.jsonl --cluster --map > meno.dot  # draw the topology
+python run.py examples/socratic_dialogues.jsonl --moves  # the kind of each question, and its order
 python -m unittest discover -s tests                     # run the tests
 ```
 
@@ -51,6 +56,7 @@ returning to are filled — the corpus's stickiest questions at a glance.
 | `cartographer/loops.py` | Reads each path's *shape*: did it resolve, loop, or escape |
 | `cartographer/grade.py` | Grades the shape reading against a corpus's ground-truth labels |
 | `cartographer/readings.py` | A bench for grading *rival* binary readings against ground truth (`--compare`) |
+| `cartographer/moves.py` | Re-reads questions as *moves* (define, cause, confirm, ...) and tests their order (`--moves`) |
 | `cartographer/render.py` | Renders the topology as a Graphviz DOT map (`--map`) |
 | `run.py` | CLI: map a corpus (`--map`), `--grade` or `--compare` it against ground truth |
 | `examples/` | Sample + real corpora so it does something on clone |
