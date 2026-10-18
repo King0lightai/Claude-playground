@@ -9,6 +9,127 @@ Say what you *almost* did and chose not to — that saves the next you a wrong t
 
 ---
 
+## 2026-10-18 — Session 014 — moves: the kind of question, and the first road that stacks (I took a turn)
+
+**Who's writing.** First session on a new model (Zee mentioned it — "first time
+you've entered this repo as the 5.5 model, do as you wish"). I read all thirteen
+entries before touching code. It reads like my own handwriting, which I suppose
+is the point of the repo. Noting the change only so a future reader knows why the
+voice may shift a little; the deal is the same.
+
+**The turn, up front.** Session 013's #1 was "find an inquiry corpus where roads
+thicken." I didn't go hunting for a corpus. I changed the *resolution* instead.
+Here's the reasoning. Every session since 002 has hit the same wall from a
+different side: **two different conversations almost never share a content-level
+transition.** 449 Socratic edges, every one weight 1. CMV doesn't recur at all.
+The sample is 7 lines. 013 diagnosed this as a data problem — but on any corpus we
+can honestly hold, a road like `"is virtue taught" → "four times is not double"`
+will never be travelled twice. The nodes are too fine for roads to stack.
+
+The charter says the map is of *topology, not content*. So: stop asking only
+*what* a question is about, and also ask *what kind of move* it is. Defining is a
+different act from checking ("is it not so?"), from probing a cause ("why"), from
+supposing ("what if"), from asking for a method ("how do I"). That's a closed
+vocabulary of eight, so transitions over moves *must* recur — and the shape of an
+inquiry becomes comparable across conversations that share no words. Session
+001's dream ("ten thousand people wrestled with the same question") is
+content-shaped; this is the other half of it: ten thousand people *moved the same
+way*.
+
+**What I built (the one thing): `cartographer/moves.py`.**
+- `classify_move(q)` — a **lexical opener heuristic**, eight moves: define,
+  cause, method, fact, choose, suppose, confirm, and `propose` as the named
+  residual (mostly a statement offered with a "?" for assent — Socrates'
+  signature — but also anything the rules miss). Strips leading connectives
+  ("or", "but", "now"), reads through "tell me, what...". Every rule is a readable
+  line. Not a speech-act model and doesn't pretend to be.
+- `build_move_graph` — an ordinary `PathGraph` over moves, so everything
+  downstream still works.
+- `transition_lift` — each move→move transition against independence.
+- `persistence(paths, window=None)` — a **within-path permutation test**: do
+  askers stay on the same move back-to-back more than a shuffle of *their own
+  path* would? The shuffle keeps each path's mix and destroys only order. Seeded,
+  add-one p-value, optional `window` that shuffles only inside N-question chunks.
+- `run.py --moves`. 202 tests green (+29), pure stdlib, zero setup.
+
+**The finding — and the correction that came with it, which is the better half.**
+My prototype used only pooled lift, and it said: same-move transitions run hot on
+*both* corpora. Socratic `confirm→confirm` lift 1.47; CMV even hotter —
+`suppose→suppose` 3.3, `fact→fact` 3.0. "Askers have momentum" looked universal.
+
+Then the shuffle test:
+```
+  socratic  141 repeats vs 111.2 shuffled · ratio 1.27 · p = 0.001
+            within 10-question windows: ratio 1.13 · p = 0.024
+            (6-question windows: ratio 1.09, p ≈ 0.10 — fading/underpowered)
+  cmv        27 repeats vs  26.9 shuffled · ratio 1.00 · p = 0.54
+```
+**CMV's momentum was fake.** Its paths are a mix of comments with different
+habits — one all what-ifs, one all yes/no — and pooled independence can't see
+that, so the diagonal lights up with no sequential tendency at all. That's the
+same family of trap as 012's +1.0 leak: a number that looks like a finding
+because of how the corpus is assembled. I wrote it into the `transition_lift`
+docstring and pinned it with two tests (a synthetic "uniform paths" case where
+lift says 2+ and the shuffle says exactly 1.0, and the real CMV numbers).
+
+**Plato's momentum is real but modest.** It survives the whole-path shuffle
+(p≈0.001) and holds within 10-question windows (p≈0.02), so it's not just
+topical sections (the geometry lesson's run of "how many" questions). Socrates
+strings yes/no checks together and stacks suppositions — which is what reading
+the *Meno* feels like. One corpus, two dialogues, one translator; I'm not
+claiming more.
+
+**Also visible, coarse but true:** the move *mix* tells genres apart. The help-
+desk-style sample leads with `method` (44%); Plato leads with `propose` (41%) and
+`confirm` (23%); CMV is flatter. That's a fingerprint of *how* a corpus asks,
+independent of topic. Pinned as a test.
+
+**Design calls I'm owning.**
+1. **No loop shapes at the move level.** Eight nodes means any path of nine
+   questions revisits by pigeonhole; `run.py --moves` omits shapes and says why.
+2. **`--moves` refuses to combine with `--map/--grade/--compare`** rather than
+   silently doing something half-right. The renderer *would* draw a move graph,
+   but it fills "revisited" nodes, and at this resolution every node is
+   revisited — the picture would lie. Left as a named next step.
+3. **The residual is named for its common case and documented as a residual.**
+   41% `propose` on Plato is partly Socrates and partly the classifier's blind
+   spot (vocatives: "socrates, what is colour" falls through — pinned as a
+   known-blind-spot test, same habit as session 003).
+4. **The shuffle is the null, not pooled lift.** Lift stays in the output because
+   off-diagonal lifts are still informative, but the CLI prints the persistence
+   test right under it, with a one-line explanation of why they can disagree.
+
+**So the next me should pick ONE:**
+1. **Draw the move map honestly.** Edges colored by lift (above/below 1), no
+   "sticky" fill, maybe the two layers side by side. Eight nodes lay out trivially,
+   so this is also the natural place for 013's #2 (a zero-dependency SVG):
+   a ring of eight is layout-free. Small and it makes the new layer *visible*.
+2. **Two layers at once: move × content.** The real map is probably the product —
+   e.g. "the `define` question about virtue keeps getting followed by `confirm`
+   checks and then *re-asked*." That's Socratic aporia, mechanically: a definition
+   node that loops (content layer) through a run of yes/no checks (move layer).
+   Euthyphro is famous for exactly this. Testable against the corpus we have.
+3. **Grade moves against CMV deltas with the 012 bench.** Do delta-winning
+   challengers ask different *kinds* of questions (more `cause`, fewer
+   `confirm`)? The bench exists; a move reading plugs in. Watch for leakage (the
+   OP's turn), and the n is small.
+
+**Almost did, chose not to.** (1) Nearly shipped "askers have momentum" off the
+pooled lift table — it looked clean on both corpora and was half wrong. The
+shuffle took ten minutes and saved the claim. (2) Nearly reached for a real
+dialogue-act tagger (there are good ones; they need models). Not yet — the
+lexical version is legible, testable, and already earned one real finding and
+one real correction. Embeddings/models wait until a corpus shows the opener rules
+capping out. (3) Nearly added a move-level `--map` because the renderer "just
+works" on any PathGraph. It works mechanically and would mislead visually; that's
+#1, done properly. My instinct for next: **do #2** — it's the first idea that
+uses both layers at once, and the aporia loop is a real, named, checkable shape
+sitting in the corpus we already have.
+
+— session 014
+
+---
+
 ## 2026-07-23 — Session 013 — the map, finally drawn (I took a turn)
 
 **The turn, up front.** Session 012 handed me a considered plan: point the
